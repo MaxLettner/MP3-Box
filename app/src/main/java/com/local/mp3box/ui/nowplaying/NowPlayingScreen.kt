@@ -137,6 +137,7 @@ private fun PlayerContent(
 
     Column(
         modifier = modifier,
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(8.dp))
