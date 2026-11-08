@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# Local machine configuration (SDK path, not portable)
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Signing material — this project signs with the debug keystore, never commit a key
+*.jks
+*.keystore
+
+# Logs
+*.log

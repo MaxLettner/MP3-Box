@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MP3Box</string>
+    <string name="nav_library">Songs</string>
+    <string name="nav_playlists">Playlists</string>
+    <string name="library_title">Songs</string>
+    <string name="playlists_title">Playlists</string>
+    <string name="now_playing_title">Now Playing</string>
+
+    <string name="choose_folder_title">Choose your music folder</string>
+    <string name="choose_folder_body">MP3Box plays the MP3 and M4A files in one folder. Only files directly inside it are listed; subfolders are ignored.</string>
+    <string name="choose_folder">Choose music folder</string>
+
+    <string name="search_songs">Search songs</string>
+    <string name="clear_search">Clear search</string>
+    <string name="rescan">Rescan</string>
+    <string name="fix">Fix</string>
+    <string name="folder_lost">Music folder is not available — pick it again</string>
+    <string name="folder_unusable">That folder cannot be read. Pick a different one.</string>
+    <string name="no_results">No songs match “%1$s”</string>
+
+    <string name="empty_library">No MP3 or M4A files in this folder</string>
+    <string name="empty_library_body">Only MP3 and M4A files directly inside the folder are listed.</string>
+    <string name="file_missing">File missing</string>
+    <string name="unknown_duration">--:--</string>
+
+    <string name="library_updated">Library updated</string>
+    <string name="library_updated_counts">Library updated (+%1$d new, %2$d missing)</string>
+
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="shuffle">Shuffle</string>
+    <string name="shuffle_on">Shuffle on</string>
+    <string name="shuffle_off">Shuffle off</string>
+    <string name="repeat_all">Repeat all</string>
+    <string name="repeat_one">Repeat one</string>
+    <string name="nothing_playing">Nothing playing</string>
+    <string name="nothing_playable">No playable songs</string>
+    <string name="song_unavailable">That song is not available</string>
+    <string name="playback_failed">Couldn\'t play that file</string>
+    <string name="track_of">Track %1$d of %2$d</string>
+
+    <string name="empty_playlists">No playlists yet</string>
+    <string name="empty_playlists_body">Create a playlist to collect songs from your folder.</string>
+    <string name="new_playlist">New playlist</string>
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="add_songs">Add songs</string>
+    <string name="cancel">Cancel</string>
+    <string name="create">Create</string>
+    <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
+    <string name="duplicate">Duplicate</string>
+    <string name="edit">Edit</string>
+    <string name="done">Done</string>
+    <string name="more_actions">More actions</string>
+    <string name="reorder">Reorder</string>
+    <string name="playlist_name">Playlist name</string>
+    <string name="rename_playlist">Rename playlist</string>
+    <string name="change_cover">Change cover</string>
+    <string name="remove_cover">Remove cover</string>
+    <string name="add_to_playlist">Add to playlist</string>
+    <string name="new_playlist_ellipsis">New playlist…</string>
+    <string name="added_to_playlist">Added to “%1$s”</string>
+    <string name="already_in_playlist">Already in this playlist</string>
+    <string name="created_playlist">Created “%1$s”</string>
+    <string name="playlist_duplicated">Playlist duplicated</string>
+    <string name="playlist_duplicate_failed">Couldn’t duplicate playlist</string>
+    <string name="delete_playlist_title">Delete playlist?</string>
+    <string name="delete_playlist_body">“%1$s” will be deleted. Its songs stay in your library.</string>
+    <string name="remove_from_playlist">Remove from playlist</string>
+    <string name="remove_unavailable">Remove unavailable tracks</string>
+    <string name="remove_unavailable_body">Their files are missing. These playlist entries are deleted; the library is untouched.</string>
+    <string name="available_of_total">%1$d of %2$d tracks available</string>
+    <string name="empty_playlist">This playlist is empty</string>
+    <string name="empty_playlist_body">Add songs from your library to start listening.</string>
+    <string name="turn_off_shuffle_to_reorder">Turn off shuffle to reorder</string>
+    <string name="cover_failed">Couldn’t use that image</string>
+    <string name="in_playlist">Already in playlist</string>
+    <string name="no_playable_songs_hint">No songs to add yet.</string>
+
+    <plurals name="add_tracks_count">
+        <item quantity="one">Add %d song</item>
+        <item quantity="other">Add %d songs</item>
+    </plurals>
+    <plurals name="remove_tracks">
+        <item quantity="one">Remove %d track</item>
+        <item quantity="other">Remove %d tracks</item>
+    </plurals>
+    <plurals name="remove_unavailable_question">
+        <item quantity="one">Remove %d unavailable track?</item>
+        <item quantity="other">Remove %d unavailable tracks?</item>
+    </plurals>
+
+    <plurals name="songs_found">
+        <item quantity="one">%d song found</item>
+        <item quantity="other">%d songs found</item>
+    </plurals>
+    <plurals name="library_header">
+        <item quantity="one">%1$d song · %2$s</item>
+        <item quantity="other">%1$d songs · %2$s</item>
+    </plurals>
+</resources>
