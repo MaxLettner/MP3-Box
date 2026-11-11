@@ -72,7 +72,7 @@
     <string name="delete_playlist_body">“%1$s” will be deleted. Its songs stay in your library.</string>
     <string name="remove_from_playlist">Remove from playlist</string>
     <string name="remove_unavailable">Remove unavailable tracks</string>
-    <string name="remove_unavailable_body">Their files are missing. These playlist entries are deleted; the library is untouched.</string>
+    <string name="remove_unavailable_body">Their files are missing. Removing them deletes these playlist entries for good.</string>
     <string name="available_of_total">%1$d of %2$d tracks available</string>
     <string name="empty_playlist">This playlist is empty</string>
     <string name="empty_playlist_body">Add songs from your library to start listening.</string>

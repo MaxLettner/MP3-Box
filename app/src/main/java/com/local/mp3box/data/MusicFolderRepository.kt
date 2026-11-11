@@ -35,15 +35,17 @@ sealed interface FolderState {
     data class Revoked(val uri: Uri) : FolderState
 }
 
+/**
+ * [missing] counts the files lost by *this* scan, not the running total, so a deleted file is
+ * announced once; [total] is what the library still lists as playable afterwards (spec §5.5).
+ */
 data class ScanResult(
     val added: Int,
     val updated: Int,
     val missing: Int,
     val total: Int,
     val failures: Int
-) {
-    val available: Int get() = total - missing
-}
+)
 
 /**
  * Owns the single SAF tree grant (spec §5), keeps [FolderState] current and runs
@@ -177,13 +179,23 @@ class MusicFolderRepository(
                     }.onFailure { failures++ }
                 }
 
+                // Count the loss before marking: an already-missing file is not lost twice, so
+                // its snackbar line appears on the scan that finds it gone and never again.
+                val lost = if (seen.isEmpty()) {
+                    trackDao.countAvailable()
+                } else {
+                    trackDao.countNewlyMissing(seen)
+                }
                 // Room rejects an empty IN (), so the no-files case needs its own statement.
                 if (seen.isEmpty()) trackDao.markAllMissing() else trackDao.markMissingExcept(seen)
+                // Spec §5.5: only rows a playlist still references survive as stubs; the rest of
+                // the library loses them for good here, so songs never show unavailable files.
+                trackDao.deleteOrphanedMissing()
                 ScanResult(
                     added = added,
                     updated = updated,
-                    missing = trackDao.countMissing(),
-                    total = trackDao.countTracks(),
+                    missing = lost,
+                    total = trackDao.countAvailable(),
                     failures = failures
                 ).also { _lastResult.value = it }
             } finally {

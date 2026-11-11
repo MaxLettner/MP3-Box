@@ -9,10 +9,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TrackDao {
 
-    @Query("SELECT * FROM tracks ORDER BY title ASC")
+    // Spec §5.5: the library lists playable files only. A missing track's row survives a scan
+    // just long enough to back the playlist stub that still points at it.
+    @Query("SELECT * FROM tracks WHERE isMissing = 0 ORDER BY title ASC")
     fun observeTracks(): Flow<List<TrackEntity>>
 
-    @Query("SELECT * FROM tracks ORDER BY title ASC")
+    @Query("SELECT * FROM tracks WHERE isMissing = 0 ORDER BY title ASC")
     suspend fun getTracks(): List<TrackEntity>
 
     @Query("SELECT * FROM tracks WHERE id = :id")
@@ -24,7 +26,7 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE uri = :uri LIMIT 1")
     suspend fun findByUri(uri: String): TrackEntity?
 
-    @Query("SELECT COUNT(*) FROM tracks")
+    @Query("SELECT COUNT(*) FROM tracks WHERE isMissing = 0")
     fun observeCount(): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -52,12 +54,17 @@ interface TrackDao {
     @Query("UPDATE tracks SET isMissing = 1")
     suspend fun markAllMissing()
 
-    @Query("DELETE FROM tracks WHERE isMissing = 1")
-    suspend fun deleteMissing()
+    /** Present rows that this listing no longer contains: the files lost by this scan. */
+    @Query("SELECT COUNT(*) FROM tracks WHERE isMissing = 0 AND uri NOT IN (:seenUris)")
+    suspend fun countNewlyMissing(seenUris: List<String>): Int
 
-    @Query("SELECT COUNT(*) FROM tracks")
-    suspend fun countTracks(): Int
+    /**
+     * Spec §5.5: a missing file no playlist points at has nothing left to show, so the row is
+     * dropped for good. Rows still referenced stay to render the playlist's "File missing" stub.
+     */
+    @Query("DELETE FROM tracks WHERE isMissing = 1 AND id NOT IN (SELECT trackId FROM playlist_items)")
+    suspend fun deleteOrphanedMissing()
 
-    @Query("SELECT COUNT(*) FROM tracks WHERE isMissing = 1")
-    suspend fun countMissing(): Int
+    @Query("SELECT COUNT(*) FROM tracks WHERE isMissing = 0")
+    suspend fun countAvailable(): Int
 }

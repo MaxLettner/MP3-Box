@@ -293,15 +293,17 @@ digits at the very end of the name is dropped.
 |---|---|---|
 | U-SCAN-1 | New listing with 3 files into an empty DB | 3 rows, `isMissing = false`, durations from `DurationReader`, titles derived |
 | U-SCAN-2 | Same listing scanned twice | second scan: `added = 0`, `updated = 0`, `missing = 0`; no duplicate rows (unique URI) |
-| U-SCAN-3 | File renamed (URI changes, same size) | old row `isMissing = true`, new row inserted, playlist rows untouched |
-| U-SCAN-4 | File renamed back to its original name | original row's `isMissing` cleared; the interim row is marked missing; no duplicate rows |
-| U-SCAN-5 | Listing becomes empty | all rows `isMissing = true`; **no deletes**; `markAllMissing()` branch (empty `IN ()` guard) |
+| U-SCAN-3 | File renamed (URI changes, same size) | old row deleted when no playlist references it, new row inserted, playlist tables untouched; with a playlist entry the old row stays `isMissing = true` so the playlist keeps its stub |
+| U-SCAN-4 | File renamed back to its original name | original row's `isMissing` cleared; the interim row is gone; no duplicate rows |
+| U-SCAN-5 | Listing becomes empty | unreferenced rows deleted; playlist-referenced rows `isMissing = true`; nothing missing remains in the library; `markAllMissing()` branch (empty `IN ()` guard) |
 | U-SCAN-6 | Size/mtime changed | `durationMs` re-read, `fileName`/`title` updated, `lastSeenAt` bumped |
 | U-SCAN-7 | Size/mtime unchanged and duration already non-zero | duration **not** re-read (assert fake reader call count) |
 | U-SCAN-7b | Size/mtime unchanged but the stored title differs from `titleFromFileName(fileName)` (rule change after an app update) | title rewritten to the derived value, duration **still** not re-read |
 | U-SCAN-8 | Durations unknown (fake returns 0) | rows still inserted, `durationMs = 0`, scan succeeds |
 | U-SCAN-9 | Playlist tables during any scan | item count/positions unchanged |
 | U-SCAN-10 | 500-file listing | completes, no crash, all rows present (timing logged, not asserted) |
+| U-SCAN-11 | Missing file not in any playlist | row deleted; `ScanResult.missing = 1` on that scan only, next scan reports `0` |
+| U-SCAN-12 | Missing file still in a playlist | row survives `isMissing = true`, joined row still yields title + missing flag; second scan reports `missing = 0` |
 
 ### 6.4 Playlists / Room (spec §7)
 
@@ -310,12 +312,12 @@ digits at the very end of the name is dropped.
 | U-PL-1 | Add same track twice in one batch | second insert ignored (`-1`), `skipped = 1`, one row |
 | U-PL-2 | Add tracks already present, mixed with new | new ones inserted at dense positions, duplicates reported |
 | U-PL-3 | Reorder 5 items | positions become 0..4 in one transaction; order query matches |
-| U-PL-4 | Delete playlist | items cascade; tracks remain |
+| U-PL-4 | Delete playlist | items cascade; available tracks remain, missing tracks left unreferenced are deleted |
 | U-PL-5 | Playlist stats | `songCount`, `durationMs` (available only), `missingCount` correct with 2 missing of 5 |
 | U-PL-6 | Playlist order on the grid | `updatedAt DESC` (latest edited first) |
 | U-PL-7 | Duplicate playlist | name `X (copy)`, same item order, independent rows, cover file copied |
 | U-PL-8 | Rename validation | blank/whitespace rejected; trimmed name stored |
-| U-PL-9 | "Remove unavailable tracks" | only rows whose track `isMissing` are removed; others keep order |
+| U-PL-9 | "Remove unavailable tracks" | only rows whose track `isMissing` are removed; others keep order; the now-unreferenced missing track rows are deleted |
 
 ### 6.5 Playback logic (spec §6)
 
@@ -340,7 +342,7 @@ digits at the very end of the name is dropped.
 | U-VM-1 | Library search | case-insensitive substring, trims, empty query restores all |
 | U-VM-2 | Sort | A–Z case-insensitive natural order, numbered titles before letters |
 | U-VM-3 | Library header | `N songs · total time` counts available tracks only |
-| U-VM-4 | Missing + folder revoked | rows still listed, playback commands become no-ops + snackbar |
+| U-VM-4 | Missing + folder revoked | library lists no missing rows (playlist stubs still rendered), playback commands become no-ops + snackbar |
 | U-VM-5 | Add-songs screen | already-present tracks flagged `Added` and not selectable; count label `Add N songs` |
 | U-VM-6 | Snapshot debounce | 6 rapid state changes → 1 DB write per virtual second |
 
@@ -378,7 +380,7 @@ without one is not.
 | I-1 | Room in-memory database | DAOs compile and run against real SQLite; unique `(playlistId, trackId)` violation ignored, `position` not unique |
 | I-2 | Real SAF scan of `/sdcard/Download/MP3BoxTest` | exactly the top-level MP3s and the M4A indexed (8–9), `nested.mp3` absent, `.jpg`/`.txt` absent |
 | I-3 | Real `MediaExtractor` durations | fixtures 1–4 and `M4A_Track.m4a` within ±100 ms; empty/corrupt → 0, scan still completes |
-| I-4 | Rescan idempotence | second scan reports 0 changes; `adb shell mv` a file → rescan reports 1 missing and the row is greyed |
+| I-4 | Rescan idempotence | second scan reports 0 changes; `adb shell mv` a file → rescan reports 1 missing, the row leaves Songs, and the next scan reports 0 missing |
 | I-5 | Missing track is unplayable | tapping the row does not start playback; queue excludes it; snackbar text present |
 | I-6 | MediaController against `PlaybackService` | controller connects via `SessionToken`, queue size matches available tracks, current `mediaId` = tapped track |
 | I-7 | Shuffle via controller | enabled: current item unchanged, remaining order differs (statistically, with ≥ 5 items); disabled: original order restored, same current item, position continuity within 250 ms |
@@ -407,7 +409,7 @@ $ADB shell pm grant com.local.mp3box android.permission.POST_NOTIFICATIONS   # w
 | C-1 | First run, no folder | onboarding copy + `Choose music folder` button visible; transport absent |
 | C-2 | Empty folder | `No MP3 or M4A files in this folder` and rescan available |
 | C-3 | Search no hits | `No songs match 'query'` |
-| C-4 | Missing row | 38 % alpha, inline `File missing`, `assertHasNoClickAction` |
+| C-4 | Playlist missing stub | 38 % alpha, inline `File missing`, `assertHasNoClickAction`; the same track is absent from the library list |
 | C-5 | Mini-player | hidden with no track; after play: title, `Playing`, progress ≥ 0, tap opens Now Playing |
 | C-6 | Slider drag | position label updates locally; `seekTo` called only on `onValueChangeFinished` (fake player repo records calls) |
 | C-7 | Shuffle/repeat semantics | content descriptions `Shuffle on/off`, `Repeat all/one`; repeat-one shows `1` badge |
@@ -425,7 +427,7 @@ $ADB shell pm grant com.local.mp3box android.permission.POST_NOTIFICATIONS   # w
 | 2. `aapt2` package/minSdk/launcher | L0 |
 | 3. zero compile errors, lint documented | L0 (`lintDebug` report) |
 | 4a. title derivation | U 6.1 |
-| 4b. scan marks missing, never deletes | U-SCAN-3/5/9 |
+| 4b. scan drops lost files from the library but keeps playlist stubs | U-SCAN-3/5/9/11/12 |
 | 4c. shuffle off restores order, keeps track | I-7 (+ I-8) |
 | 4d. repeat ALL → ONE → ALL | U-PB-1/2/3, I-8 |
 | 4e. duplicate insert blocked by unique index | U-PL-1, I-1 |
@@ -464,7 +466,7 @@ Run in this order; each line needs an observable result, not "looks fine". `ADB`
 | D-18 | Shuffle restore | toggle on/off mid-track: current song keeps playing and position; playlist saved order unchanged after restart |
 | D-19 | Drag reorder | lift, auto-scroll, drop; order survives restart; blocked while shuffle is on |
 | D-20 | Covers | pick from DokeOS gallery, downscaled, survives restart and a forced stop |
-| D-21 | Missing file | rename via `adb shell mv`; rescan → greyed `File missing`; play skips it with snackbar; "Remove unavailable tracks" cleans only those |
+| D-21 | Missing file | rename via `adb shell mv`; rescan → once `+1 missing`, row gone from Songs, playlist shows `File missing` stub; play skips it with snackbar; removing the stub (or "Remove unavailable tracks") deletes the entry and the row |
 | D-22 | Folder lost | revoke/delete folder → banner, playlists intact, `Fix` restores playback |
 | D-23 | Resume | kill from Recents after pausing; relaunch → saved track shown paused at 0:00 |
 | D-24 | Notification permission denied | revoke, play → audio works, only the notification is missing, hint shown once |

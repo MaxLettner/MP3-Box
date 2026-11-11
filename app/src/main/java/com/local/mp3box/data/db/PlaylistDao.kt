@@ -99,9 +99,14 @@ abstract class PlaylistDao {
         touch(playlistId, now)
     }
 
+    /** Spec §5.5: once the last playlist entry is gone, a missing track's row goes with it. */
+    @Query("DELETE FROM tracks WHERE isMissing = 1 AND id NOT IN (SELECT trackId FROM playlist_items)")
+    abstract suspend fun deleteOrphanedMissing()
+
     @Transaction
     open suspend fun removeUnavailable(playlistId: Long, now: Long) {
         deleteUnavailableItems(playlistId)
+        deleteOrphanedMissing()
         touch(playlistId, now)
     }
 
@@ -112,7 +117,14 @@ abstract class PlaylistDao {
     open suspend fun removeTracksAndTouch(playlistId: Long, trackIds: List<Long>, now: Long) {
         if (trackIds.isEmpty()) return
         deleteTracks(playlistId, trackIds)
+        deleteOrphanedMissing()
         touch(playlistId, now)
+    }
+
+    @Transaction
+    open suspend fun deletePlaylistAndOrphans(id: Long) {
+        deleteById(id)
+        deleteOrphanedMissing()
     }
 
     /** Spec §7.1 flow A: create with the picked songs in one transaction. */

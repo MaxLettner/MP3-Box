@@ -201,12 +201,13 @@ out of scope. Album art is therefore always a generated placeholder (see 7.4).
 1. Read all direct children of the tree URI, build a set of `uri → metadata`.
 2. Upsert every found document (insert new, update `fileName`, `sizeBytes`, `lastModified` and
    re-derive `title` if the name changed).
-3. Mark every previously-indexed track **not** in the set as `isMissing = true` (never delete rows —
-   playlists must keep pointing at them).
-4. Clear `isMissing` for tracks that reappear.
-5. Read `durationMs` only when it is still `0` **and** the file is reachable; failures leave it 0
+3. Mark every previously-indexed track **not** in the set as `isMissing = true`.
+4. Delete the missing rows **no playlist points at**. A row a playlist entry still references
+   survives to render that playlist's `File missing` stub; the library never lists missing rows.
+5. Clear `isMissing` for tracks that reappear.
+6. Read `durationMs` only when it is still `0` **and** the file is reachable; failures leave it 0
    and the UI renders `--:--`.
-6. Never touch playlist tables during a scan.
+7. Never touch playlist tables during a scan.
 
 ### 5.3 When scanning happens
 - **Automatically on app launch** (cold start, Library tab visible) — list-only, fast.
@@ -228,17 +229,22 @@ Response (user's choice — "banner + re-pick, cache kept"):
 - Tapping `Fix` reopens the picker; success re-enables playback and triggers a scan.
 
 ### 5.5 Missing files (deleted / renamed / SD card removed)
-User's choice: **greyed-out everywhere**.
-- Library and playlist rows render the track dimmed (≈38 % content alpha), with an inline
-  `File missing` label (or a broken-file icon).
-- Not tappable for playback.
+User's choice: **gone from the library, a stub in playlists**.
+- The scan that can no longer find a file drops it from the library: `isMissing = true` rows are
+  never listed, and a row no playlist references is deleted from the database.
+- A track that is still in a playlist keeps its row, so the playlist shows a stub with the derived
+  title and an inline `File missing` label (≈38 % content alpha), not tappable for playback.
+- That scan reports the loss once (`+N missing`); a track that was already missing is not counted
+  again, so later scans do not repeat the same notice.
 - Playback **skips** unavailable tracks automatically (both when the user taps a song in the
   middle of a playlist and when the queue advances onto one) and shows a snackbar:
   "Skipped N unavailable track(s)".
 - Playlist header shows `N of M tracks available` when any are missing, plus a small
-  "Remove unavailable tracks" action (cleans up playlist entries whose track is missing) —
-  this is the only sanctioned automatic-ish removal, and it requires the explicit tap.
-- Because rows are never deleted, re-mounting an SD card restores everything after a rescan.
+  "Remove unavailable tracks" action. It deletes those entries, and with them the last reference
+  to each missing track, so the row goes too. Removing a stub individually does the same: it is
+  gone for good.
+- Because a referenced row survives, re-mounting an SD card restores the playlist entry after a
+  rescan; a track whose row was already deleted is simply indexed again as a new one.
 
 ---
 
@@ -363,7 +369,8 @@ The foreground service is necessary but not sufficient. v1 therefore does all of
 - **Rename** — via playlist detail overflow → dialog with current name pre-filled; trims, rejects
   blank with inline error.
 - **Delete** — overflow → confirmation dialog ("Delete playlist 'X'? Songs stay in your library.").
-  Cascades playlist items only; tracks untouched. If the playlist is currently playing, playback
+  Cascades playlist items; available tracks are untouched, while a missing track left without any
+  playlist reference is deleted with its stub (5.5). If the playlist is currently playing, playback
   stops and the mini-player clears.
 - **Add / remove songs** — `Add songs` screen with multi-select and a live "N selected" count;
   remove via row overflow (`Remove from playlist`) and via an edit mode with multi-select removal.
@@ -448,13 +455,15 @@ Every track row and the Now Playing screen uses a **generated tile**:
   starting with letters. Implemented in `util/NaturalOrder.kt` (SQLite cannot do numeric-aware
   ordering on its own). Only one sort option in v1; no sort menu.
 - List rows: 56 dp height, generated tile (40 dp), title (1 line), duration at trailing
-  (`--:--` when unknown), missing files dimmed with `File missing`. No artist/album line, since
+  (`--:--` when unknown). The library lists playable files only; a missing file appears solely as
+  a playlist stub (5.5). No artist/album line, since
   there is no such metadata — the second line shows the **file name** in muted small type only if
   the title differs from it; otherwise nothing.
 - Tap = play with library queue (6.2). Long-press = context sheet (`Play`, `Add to playlist`).
 - Header line above the list: `N songs · total time` (available only).
 - Pull-to-refresh (`PullToRefreshBox`) triggers rescan; brief "Library updated" snackbar with
-  counts (`+3 new, 1 missing`).
+  counts (`+3 new, 1 missing`). `missing` covers files lost by that scan only, so a deleted file
+  is announced once and the following scan stays quiet.
 - **Empty states:** no folder yet → button-led onboarding; folder empty → "No MP3 or M4A files in
   this folder" (only MP3 and M4A supported); search with no hits → "No songs match 'query'".
 
@@ -687,7 +696,7 @@ be run on the Shark 8 by the user, or by the agent if `adb devices` shows it.
 | Repeat | Cycle repeat-all ↔ repeat-one only (no off) |
 | Now Playing | Seek bar, transport, shuffle/repeat |
 | Mini-player | Docked above bottom tabs, expands to Now Playing |
-| Missing files | Greyed out everywhere with label, skipped during playback |
+| Missing files | Dropped from the library; playlist stub with `File missing`, skipped during playback |
 | Folder lost | Banner + re-pick, cached library/playlists preserved |
 | Rescan | Auto on launch + pull-to-refresh (+ button) |
 | Resume | Restore playlist/track, paused at 0:00 |
