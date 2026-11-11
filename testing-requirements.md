@@ -1,7 +1,7 @@
 # MP3Box — Testing Requirements
 
 **Companion to:** `mp3box-spec.md` (what to build) and `mp3box-implementation-plan.md` (how to build it)
-**Target:** Blackview Shark 8, DokeOS 4.0 / Android 13 (API 33), plus an API 33 AVD in this container
+**Target:** DokeOS 4.0 / Android 13 (API 33), plus an API 33 AVD in this container
 **Date:** 2026-11-06
 **Status:** Requirements — nothing here is implemented yet (the app sources do not exist)
 
@@ -41,7 +41,7 @@ Five layers, all needed; none substitutes for another.
 | L1 Pure logic | JUnit 4 + Truth (`testDebugUnitTest`) | JVM here | title derivation, formatting, queue/restore/repeat plans, scan diff, dedupe, reorder, stats, filter/sort |
 | L2 Android integration | Robolectric + `androidx.test` + Room in-memory | JVM here | DAO SQL, Flow behaviour, folder-state machine, debounce, cover downscale |
 | L3 UI + real SAF + player | Compose UI test, UiAutomator, `MediaController` (`connectedDebugAndroidTest`) | API 33 AVD | screens, missing-track behaviour, real tree URIs, real `MediaExtractor` durations, media session/queue |
-| L4 Device-only behaviour | manual + `adb` shell assertions | Shark 8 | DokeOS battery killer, notification/lockscreen card, vendor pickers, audio routing, Bluetooth/headset |
+| L4 Device-only behaviour | manual + `adb` shell assertions | DokeOS device | DokeOS battery killer, notification/lockscreen card, vendor pickers, audio routing, Bluetooth/headset |
 
 **The honest global answer:** audio output, headphone-unplug handling, real Bluetooth/AVRCP, the
 DokeOS media card and the DokeOS battery manager cannot be tested anywhere except the phone. Anything
@@ -196,7 +196,7 @@ Optional stress fixture (only for scan timing, not correctness): 500 one-second 
 `Stress_001.mp3`…`Stress_500.mp3` (`for i in $(seq -w 1 500); do ffmpeg … "$L/Stress_$i.mp3"; done`).
 Under spec §4.2 every one of them is titled `Stress`, since the trailing numbers are ignored; that is
 expected and harmless for a timing fixture.
-Scanning must stay off the main thread and show progress; there is no hard time budget on a Helio G99,
+Scanning must stay off the main thread and show progress; there is no hard time budget on the target device,
 but a visible UI stall on 500 files is a failure of spec §5.1/§8.3.
 
 ### 4.2 Pushing fixtures
@@ -440,7 +440,7 @@ $ADB shell pm grant com.local.mp3box android.permission.POST_NOTIFICATIONS   # w
 
 ---
 
-## 9. L4 — Shark 8 / DokeOS 4.0 checklist (manual, cannot be automated here)
+## 9. L4 — DokeOS 4.0 checklist (manual, cannot be automated here)
 
 Run in this order; each line needs an observable result, not "looks fine". `ADB` = platform-tools path.
 
@@ -552,11 +552,11 @@ Gradle output through `head`/`tail` without `pipefail`, or a failure will look l
 2. **Bluetooth/AVRCP, headset buttons, car head units** — needs real hardware.
 3. **DokeOS SystemUI rendering** (media card layout, lockscreen style) — vendor code, phone only.
 4. **DokeOS battery manager and DuraSpeed** — not emulatable; 30-minute real-time test.
-5. **Vendor picker UI** — UiAutomator matches AOSP, not Blackview's, so D-3/D-4/D-20 are manual.
+5. **Vendor picker UI** — UiAutomator matches AOSP, not DokeOS's, so D-3/D-4/D-20 are manual.
 6. **Doze/standby over hours** — 30 minutes is a proxy, not proof.
-7. **Photographic fidelity of the dark theme on the 500-nit IPS panel** — visual review.
+7. **Photographic fidelity of the dark theme** — visual review.
 8. **Play Store policy** for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` — irrelevant while sideloaded.
-9. **500-file scan performance on a Helio G99** — proxy only via the emulator; measure on the phone
+9. **500-file scan performance on the target device** — proxy only via the emulator; measure on the phone
    if it feels slow, and report a number rather than "fast".
 
 ---

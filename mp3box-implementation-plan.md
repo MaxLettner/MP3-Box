@@ -3,7 +3,7 @@
 **Companion to:** `mp3box-spec.md` (source of truth for *what* to build)
 **This document:** *how* to build it, in what order, with which files, versions and commands
 **Target:** a working `app-debug.apk` for a Kotlin + Jetpack Compose MP3/M4A player, built in this container
-**Build strategy:** no physical device is attached, but an **API 33 emulator** can be installed here (KVM present) to match the Shark 8. "Done" means *compiles, packages, passes static verification and an API 33 smoke test*; DokeOS-specific behaviour stays a phone-side checklist. Runtime behaviour is listed in §10.2 for the user to check on a phone.
+**Build strategy:** no physical device is attached, but an **API 33 emulator** can be installed here (KVM present) to match the target runtime. "Done" means *compiles, packages, passes static verification and an API 33 smoke test*; DokeOS-specific behaviour stays a phone-side checklist. Runtime behaviour is listed in §10.2 for the user to check on a phone.
 
 ---
 
@@ -28,8 +28,8 @@ Every version below was checked against Google Maven / Maven Central on 2026-11-
 | Core KTX | **1.19.1** | 1.19.1 | Stable |
 | Coroutines | **1.11.0** | 1.11.0 | Stable |
 | Coil 3 (cover images) | **3.6.3** | 3.6.3 | Async load of picked cover files without hand-rolling bitmap plumbing |
-| Emulator for smoke tests | **android-33;google_apis;x86_64** | 33 rev 17 | Matches the Shark 8's API 33 runtime; `google_apis` (not `default`) so DocumentsUI and the photo picker behave |
-| Target phone | **Blackview Shark 8, DokeOS 4.0 / Android 13** | — | The device this must run on; see §2.6 |
+| Emulator for smoke tests | **android-33;google_apis;x86_64** | 33 rev 17 | Matches the API 33 target runtime; `google_apis` (not `default`) so DocumentsUI and the photo picker behave |
+| Target platform | **DokeOS 4.0 / Android 13** | — | The platform this must run on; see §2.6 |
 | compileSdk / targetSdk / minSdk | **37 / 36 / 31** | — | 2026 AndroidX requires compileSdk 37; `targetSdk` stays 36 per spec, API 33 is the real runtime, 31 is only a floor |
 
 ### Deliberate deviations from the spec's stack table
@@ -103,7 +103,7 @@ kotlin.code.style=official
 
 ### 2.5 Emulator for API 33 smoke tests
 
-The target phone is a Blackview Shark 8 on **DokeOS 4.0 / Android 13 (API 33)**. `/dev/kvm` exists
+The target platform is **DokeOS 4.0 / Android 13 (API 33)**. `/dev/kvm` exists
 and the API 33 images are available, so an AVD is the cheapest way to exercise runtime paths that
 `assembleDebug` cannot:
 
@@ -141,17 +141,17 @@ adb shell dumpsys media_session          # session + metadata + playback state
 adb shell dumpsys activity services com.local.mp3box   # is the FGS still alive?
 ```
 
-### 2.6 Target device: Blackview Shark 8 / DokeOS 4.0
+### 2.6 Target platform: DokeOS 4.0
 
-Hardware: Helio G99, 8 GB RAM, 256 GB + microSDXC, 6.78" 1080 × 2460 @ 120 Hz, Android 13 (API 33).
+Android 13 (API 33).
 
 | DokeOS behaviour | Consequence in this project |
 |---|---|
 | DuraSpeed, System Manager auto-clean, auto-start management, “Intelligent power saving in sleep mode” | One-time battery-optimisation exemption (§7.6) plus an in-app whitelist card. Playback must survive 30 min screen-off (test 13 in §10.2). |
 | Vendor DocumentsUI / photo picker | Validate `DocumentsContract.isTreeUri`; fall back to `ACTION_OPEN_DOCUMENT_TREE` / `ACTION_OPEN_DOCUMENT` when a returned URI cannot be queried. Copy cover bytes immediately. |
 | SystemUI draws the media notification and lock-screen card | Supply `MediaMetadata.artworkData` (generated tile JPEG, ≤ 512 px) or DokeOS shows an empty grey square. |
-| Gesture nav by default, 3-button optional, 20:9 screen | Insets applied manually (targetSdk 36 does not force edge-to-edge on API 33). Check both nav modes once on the phone. |
-| Aggressive memory management (8 GB, “Atomized Memory”) | No `largeHeap`, no long-lived bitmaps; Coil handles decode; the media service must not hold the Activity. |
+| Gesture nav by default, 3-button optional, tall screen | Insets applied manually (targetSdk 36 does not force edge-to-edge on API 33). Check both nav modes once on the phone. |
+| Aggressive memory management (“Atomized Memory”) | No `largeHeap`, no long-lived bitmaps; Coil handles decode; the media service must not hold the Activity. |
 | DokeOS “Focus Mode” / “No-play Mode” | Can mute notifications and block apps; document as a user-side cause if the media card disappears. Not something the app overrides. |
 | API 33 runtime | `POST_NOTIFICATIONS` is a real prompt; `FOREGROUND_SERVICE_MEDIA_PLAYBACK` is declared but not enforced; no API 34+ behaviour may be relied on. |
 
@@ -856,7 +856,7 @@ ls -l app/build/outputs/apk/debug/app-debug.apk    # exists, non-trivial size
 
 ./gradlew --no-daemon :app:assembleRelease        # release APK builds, signed with the debug key
 
-# API 33 emulator (matches the Shark 8): install + drive
+# API 33 emulator (matches the target runtime): install + drive
 $ANDROID_HOME/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
 $ANDROID_HOME/platform-tools/adb shell am start -n com.local.mp3box/.MainActivity
 $ANDROID_HOME/platform-tools/adb logcat -s AndroidRuntime:E MP3Box:* ExoPlayerImpl:*
@@ -872,7 +872,7 @@ Optional static checks (cheap, do them once at phase 9): `./gradlew :app:lintDeb
 
 No physical device is attached to the container and there is no audio hardware. The API 33 emulator
 covers the functional items below (except audio output, unplug detection and real SystemUI); the
-device-only items are 13–18. These must be checked on the Shark 8 by the user, or by the agent if
+device-only items are 13–18. These must be checked on a DokeOS device by the user, or by the agent if
 `adb devices` shows it:
 
 1. Folder picker grants access; permission survives app restart.
