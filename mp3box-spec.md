@@ -162,11 +162,16 @@ Cast, no equalizer, no widgets.
 `title` is computed from the file name:
 
 1. Strip the extension (`.mp3` or `.m4a`, case-insensitive).
-2. Replace every `_` with a single space.
-3. Collapse runs of whitespace to one space and `trim()`.
-4. If the result is blank after stripping, fall back to the raw file name.
-5. Do **not** try to split "Artist - Title"; do not strip numbers/prefixes; do not title-case.
-   A file `01_My_Song_final.mp3` shows as `01 My Song final`.
+2. Ignore a number at the very end of the name — the usual duplicate suffix: remove the trailing
+   run of digits. `Test.m4a` and `Test2.m4a` both show as `Test`; `Test3Test.m4a` keeps its digits
+   because they are not at the end.
+3. Replace every `_` with a single space.
+4. Collapse runs of whitespace to one space and `trim()`.
+5. If the result is blank after stripping (a file named only with digits, or no base name at all),
+   fall back to the name without its extension, and to the raw file name if that is blank too.
+6. Do **not** try to split "Artist - Title"; do not strip **leading** numbers; do not title-case.
+   A file `01_My_Song_final.mp3` shows as `01 My Song final`, and `7_years2.m4a` shows as
+   `7 years`.
 
 Tag reading, `MediaMetadataRetriever` album/artist extraction and embedded artwork are explicitly
 out of scope. Album art is therefore always a generated placeholder (see 7.4).

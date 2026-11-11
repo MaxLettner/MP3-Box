@@ -155,7 +155,10 @@ class MusicFolderRepository(
                                     added++
                                 }
                             }
-                            existing.fileName != file.fileName ||
+                            // The title comparison keeps an unchanged file's stored title in sync
+                            // with current derivation rules (spec §4.2) after an app update.
+                            existing.title != title ||
+                                existing.fileName != file.fileName ||
                                 existing.sizeBytes != file.sizeBytes ||
                                 existing.lastModified != file.lastModified -> {
                                 trackDao.updateFromScan(

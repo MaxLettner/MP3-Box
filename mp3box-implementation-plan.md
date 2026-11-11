@@ -529,7 +529,9 @@ fun durationMs(resolver: ContentResolver, uri: Uri): Long = runCatching {
 4. for each file (sequential, IO dispatcher):
      row = trackDao.findByUri(uri)
      if row == null                    -> insert new (duration, title, size, lastModified, lastSeenAt = now)
-     else if size/lastModified changed -> update duration/title + isMissing = false, lastSeenAt = now
+     else if size/lastModified changed  -> update duration/title + isMissing = false, lastSeenAt = now
+     else if derived title differs      -> update title + isMissing = false, lastSeenAt = now
+                                           (keeps stored titles in step with §4.2 changes)
      else                              -> isMissing = false, lastSeenAt = now
 5. if seen.isEmpty() -> markAllMissing()   else markMissingExcept(seen ids)
 6. emit ScanResult; update lastScanAt
@@ -542,13 +544,20 @@ Re-scan triggers per spec: app launch, pull-to-refresh, toolbar button. No conte
 ### 6.5 Title derivation (spec §4.2)
 
 ```kotlin
+private val TRAILING_NUMBER = Regex("\\d+$")
+
 fun titleFromFileName(fileName: String): String {
-    val base = fileName.substringBeforeLast('.', fileName)
-    val spaced = base.replace('_', ' ')
+    val base = fileName.substringBeforeLast('.', fileName).trimEnd()
+    val spaced = base.replace(TRAILING_NUMBER, "").replace('_', ' ')
     val collapsed = spaced.replace(Regex("\\s+"), " ").trim()
-    return collapsed.ifEmpty { fileName }
+    return collapsed.ifEmpty {
+        base.replace('_', ' ').replace(Regex("\\s+"), " ").trim().ifEmpty { fileName }
+    }
 }
 ```
+
+A trailing digit run is the duplicate suffix, so `Test2.m4a` joins `Test.m4a` as `Test` while
+`Test3Test.m4a` keeps its digits; leading numbers are untouched (`7_years2.m4a` → `7 years`).
 
 No ID3 reading anywhere: no artist, album, embedded art.
 
