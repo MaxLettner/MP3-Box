@@ -42,17 +42,13 @@ This project is being built in a Linux container, **not** on a developer machine
 | Network | available (verified via package/URL fetches) |
 | Chrome | installed (could render screenshots of the UI if requested, not required) |
 
-### 2.1 Target device — Blackview Shark 8 on DokeOS 4.0 (first-class, not an afterthought)
+### 2.1 Target platform — DokeOS 4.0 (first-class, not an afterthought)
 
 | Item | Value |
 |---|---|
-| Phone | Blackview Shark 8 |
 | OS | **DokeOS 4.0 (P4.0), based on Android 13 — API 33** |
-| SoC / RAM | MediaTek Helio G99 (6 nm), 8 GB LPDDR4X |
-| Display | 6.78" IPS, 1080 × 2460 (~396 ppi), 120 Hz |
-| Storage | 256 GB internal (UFS 2.2) + dedicated microSDXC slot |
 | Navigation | gesture navigation by default, 3-button user-selectable |
-| Services | global units ship with GMS, but nothing in the app may depend on Play Services |
+| Services | DokeOS ships with GMS, but nothing in the app may depend on Play Services |
 
 What this changes in the build:
 
@@ -90,7 +86,7 @@ Consequences that shape the plan:
 3. Gradle wrapper must be committed and the build must run with `--no-daemon` initially to keep
    memory use in check (14 GB RAM total, 10 GB available).
 4. No physical device is attached, but `/dev/kvm` and the API 33 system images are available, so an
-   **API 33 AVD** can be installed to match the Shark 8. Verification is therefore
+   **API 33 AVD** can be installed to match the target runtime. Verification is therefore
    **`assembleDebug` + `aapt2` inspection + an API 33 emulator smoke test**; DokeOS-specific
    behaviour (battery manager, SystemUI media card, vendor pickers) still cannot be verified here
    and must be reported as such rather than claimed as tested.
@@ -113,7 +109,7 @@ pin exactly what resolves, recording the final numbers in the README/commit.
 | DI | manual (no Hilt) | app is small; a hand-written `AppContainer` keeps the build simple |
 | Async | Kotlin Coroutines + Flow | single source of truth = Room `Flow`s collected as Compose state |
 | Settings/prefs | DataStore Preferences (or SharedPreferences) | folder URI, theme accent, first-run flag |
-| compileSdk / targetSdk | 37 / 36 | The 2026 AndroidX/Compose artefacts require compiling against SDK 37; `targetSdk` stays 36. The Shark 8 runs it on API 33, so no API 34+ runtime behaviour may be assumed |
+| compileSdk / targetSdk | 37 / 36 | The 2026 AndroidX/Compose artefacts require compiling against SDK 37; `targetSdk` stays 36. The target platform runs it on API 33, so no API 34+ runtime behaviour may be assumed |
 | **minSdk** | **31 (Android 12)** | per user decision; the only target phone is API 33, so 31 is a floor, not a tested configuration |
 | Languages | English only | hard-coded strings in `res/values/strings.xml` anyway so localization stays possible |
 
@@ -323,7 +319,7 @@ User's choice: **gone from the library, a stub in playlists**.
 - The restored queue keeps its saved order; shuffle and repeat are re-applied from `PlaybackState`.
   A fresh playlist start still resets shuffle OFF and repeat ALL (6.3, 6.4).
 
-### 6.7 Background survival on DokeOS 4.0 (Shark 8)
+### 6.7 Background survival on DokeOS 4.0
 
 DokeOS is one of the more aggressive OEM skins: it can freeze or kill an app even while a
 `mediaPlayback` foreground service is running, most often after the screen has been off for a while.
@@ -386,7 +382,7 @@ The foreground service is necessary but not sufficient. v1 therefore does all of
   (`filesDir/covers/<playlistId>-<timestamp>.jpg`, downscaled to ≤ 640 px, JPEG q88) → store the
   absolute path → old copy deleted. `Remove cover` restores the generated placeholder. Covers survive the
   original gallery image being deleted. Pick requires no storage permission (photo picker).
-  On the Shark 8 (API 33) the native picker is used; if DokeOS returns a URI that cannot be opened,
+  On API 33 the native picker is used; if DokeOS returns a URI that cannot be opened,
   fall back to `ACTION_OPEN_DOCUMENT` with `image/*` and copy the bytes immediately — the vendor URI
   grant is short-lived either way.
 - **Duplicate a playlist** — overflow → `Duplicate`; copies name (`X (copy)`) + items + cover
@@ -508,7 +504,7 @@ Full-screen, top-to-bottom:
 - Every icon button ≥ 48 dp; content descriptions on all icon-only controls (shuffle, repeat, next,
   play/pause, cover, drag handle).
 - Dynamic font scaling respected; rows use `maxLines` + ellipsis rather than fixed text heights.
-- The Shark 8 is a tall 20:9 screen and supports both gesture and 3-button navigation. The
+- The target screen is tall and supports both gesture and 3-button navigation. The
   mini-player and the Now Playing transport row must sit above the navigation-bar inset in both
   modes, and nothing may be drawn under the status bar. Both modes are checked once on the phone.
 - Colour is never the only signal: shuffle/repeat also announce state via description
@@ -559,7 +555,7 @@ Full-screen, top-to-bottom:
       </intent-filter>
   </service>
   ```
-- `POST_NOTIFICATIONS` runtime request on first play only (Android 13+; the Shark 8 is API 33, so
+- `POST_NOTIFICATIONS` runtime request on first play only (Android 13+; the target platform is API 33, so
   this prompt is real). Denial must not break playback — the session still works, only the
   notification is hidden; show a one-time hint.
 - Battery optimisation is requested once, after the folder grant or on the first play, whichever
@@ -604,7 +600,7 @@ Steps (in order, all local to the project folder / user cache):
    (package `com.local.mp3box`, minSdk 31, targetSdk 36, launcher activity present).
 6. Run the API 33 emulator smoke test (install, launch, folder pick, play/pause, playlist CRUD,
    rotate/background) and record what was actually observed. Then report the APK path and size.
-   If the Shark 8 is attached (`adb devices`), also `adb install -r` and run the DokeOS checks in
+   If a device is attached (`adb devices`), also `adb install -r` and run the DokeOS checks in
    §12 item 7; otherwise state plainly which behaviours were not run.
 7. Both variants must install. `release` is signed with the machine's own debug keystore (nothing
    committed; the app is sideload-only), so `app-release.apk` and `app-debug.apk` install and update
@@ -642,7 +638,7 @@ A build is "done" when **all** of the following hold:
    - `PlaybackState` persists and restores the track at 0:00, paused (§6.6).
 5. Manifest matches §10 (no storage permissions, media service declared correctly).
 6. No files created outside the project folder except toolchain/SDK installs under the user's cache.
-7. DokeOS 4.0 / API 33 on the Shark 8:
+7. DokeOS 4.0 / API 33 on a device:
    - installs from the APK and launches; dark theme is edge-to-edge with no content under the bars
      in both gesture and 3-button navigation;
    - the folder picker returns a usable tree URI and the grant survives a reboot and a System
@@ -658,7 +654,7 @@ A build is "done" when **all** of the following hold:
 Not verifiable from this container unless the phone is attached: actual audio output, SAF picker UX,
 notification and lockscreen controls, drag-and-drop feel, dark-visual fidelity, and DokeOS battery
 behaviour. The API 33 emulator covers everything except the DokeOS-specific items above; those must
-be run on the Shark 8 by the user, or by the agent if `adb devices` shows it.
+be run on a DokeOS device by the user, or by the agent if `adb devices` shows it.
 
 ---
 
@@ -712,7 +708,7 @@ be run on the Shark 8 by the user, or by the agent if `adb devices` shows it.
 | `positionMs` | Stored with the snapshot; **not** restored in v1 (resume always 0:00) |
 | Track fields | `uri`, `title`, `fileName`, `lastSeenAt` — aligned with the implementation plan |
 | APK production | Built by the agent in this environment (debug + debug-signed release) |
-| Target hardware | Blackview Shark 8, DokeOS 4.0 (Android 13 / API 33) — the only device in scope |
+| Target platform | DokeOS 4.0 (Android 13 / API 33) — the only platform in scope |
 | Runtime floor | minSdk stays 31, but correctness is judged at API 33; no API 34–36 runtime assumptions |
 | Background survival | one-time battery-optimisation exemption + in-app DokeOS whitelist guidance |
 | Emulator | API 33 `google_apis` x86_64 AVD for smoke tests (KVM available) |
