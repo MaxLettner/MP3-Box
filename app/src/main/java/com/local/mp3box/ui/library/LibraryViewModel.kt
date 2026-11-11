@@ -101,7 +101,7 @@ class LibraryViewModel(
                 return@launch
             }
             folderRepository.lastResult.value?.let {
-                _events.send(LibraryEvent.SongsFound(it.available))
+                _events.send(LibraryEvent.SongsFound(it.total))
             }
         }
     }

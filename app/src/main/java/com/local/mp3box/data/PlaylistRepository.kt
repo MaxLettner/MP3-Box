@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.map
 
 /**
  * Spec §7: create/rename/delete/duplicate, add/remove, reorder, covers. Every mutation bumps
- * `updatedAt`, which is the grid's only sort key (spec §7.3). Songs are never deleted here.
+ * `updatedAt`, which is the grid's only sort key (spec §7.3). Playable songs are never deleted here;
+ * a missing track's row goes only when its last playlist entry does (spec §5.5).
  */
 class PlaylistRepository(
     private val dao: PlaylistDao,
@@ -42,7 +43,8 @@ class PlaylistRepository(
 
     suspend fun delete(id: Long) {
         val cover = dao.findPlaylist(id)?.coverPath
-        dao.deleteById(id)
+        // Missing tracks whose last entry lived here lose their stub row in the same transaction.
+        dao.deletePlaylistAndOrphans(id)
         coverArtStore.delete(cover)
     }
 

@@ -367,9 +367,9 @@ const val PLAYBACK_STATE_ID = 1      // read with WHERE id = :PLAYBACK_STATE_ID
 ### 5.2 DAO queries worth writing out
 
 ```kotlin
-// Library: stable base order only. SQLite cannot compare digit runs numerically, so the Library
-// ViewModel re-sorts with NaturalOrder.compare (§8.3) before exposing the list.
-@Query("SELECT * FROM tracks ORDER BY title ASC")
+// Library: stable base order only, playable files only (spec §5.5). SQLite cannot compare digit
+// runs numerically, so the Library ViewModel re-sorts with NaturalOrder.compare (§8.3).
+@Query("SELECT * FROM tracks WHERE isMissing = 0 ORDER BY title ASC")
 fun observeTracks(): Flow<List<TrackEntity>>
 
 // Playlist content, ordered, with track rows joined in
@@ -414,8 +414,18 @@ suspend fun markPresent(uris: List<String>)
 @Query("UPDATE tracks SET isMissing = 1")
 suspend fun markAllMissing()
 
-@Query("DELETE FROM tracks WHERE isMissing = 1")
-suspend fun deleteMissing()          // only the explicit "Remove unavailable tracks" action
+// Present files this listing no longer contains; counted before marking so a loss is reported
+// by the scan that finds it and never again.
+@Query("SELECT COUNT(*) FROM tracks WHERE isMissing = 0 AND uri NOT IN (:seenUris)")
+suspend fun countNewlyMissing(seenUris: List<String>): Int
+
+@Query("SELECT COUNT(*) FROM tracks WHERE isMissing = 0")
+suspend fun countAvailable(): Int
+
+// Spec §5.5: a missing row survives only while a playlist still points at it (the stub);
+// the same statement runs in PlaylistDao when a removal or delete leaves a stub unreferenced.
+@Query("DELETE FROM tracks WHERE isMissing = 1 AND id NOT IN (SELECT trackId FROM playlist_items)")
+suspend fun deleteOrphanedMissing()
 ```
 
 Empty `IN ()` lists need guarding (`if (seenIds.isEmpty()) markAllMissing() else markMissingExcept(...)`) — Room expands lists at runtime and SQLite rejects empty `IN`.
@@ -423,7 +433,7 @@ Empty `IN ()` lists need guarding (`if (seenIds.isEmpty()) markAllMissing() else
 ### 5.3 Repositories
 
 - **`MusicFolderRepository`** — owns the SAF tree URI (DataStore), checks `contentResolver.persistedUriPermissions`, runs scans, exposes `Flow<List<Track>>`, `StateFlow<FolderState>` (`NoFolder` / `Ok` / `Revoked`), and `ScanResult(added, updated, missing, total, failures)`.
-- **`PlaylistRepository`** — create/rename/delete/duplicate/reorder/add/remove, cover assignment, stats flow. Every mutation sets `updatedAt = now` via `touchPlaylist` in the same transaction; create/duplicate set `updatedAt = createdAt`. Duplicate = copy rows + items in positions order + copy cover JPEG to a new file.
+- **`PlaylistRepository`** — create/rename/delete/duplicate/reorder/add/remove, cover assignment, stats flow. Every mutation sets `updatedAt = now` via `touchPlaylist` in the same transaction; create/duplicate set `updatedAt = createdAt`. Duplicate = copy rows + items in positions order + copy cover JPEG to a new file. Removing entries (individually, in bulk, via "Remove unavailable tracks", or by deleting the playlist) also deletes missing track rows left without any playlist reference, in the same transaction.
 - **`CoverArtStore`** — `import(playlistId, sourceUri)` copies the picked image to `filesDir/covers/<playlistId>-<timestamp>.jpg`: decode bounds → `inSampleSize` to ≤ 640 px → JPEG 88 → delete the old file. Picking is the caller's job (photo picker URI is only valid briefly, so copy immediately).
 - **`PlaybackStateRepository`** — single-row upsert, debounced (~1 s) from the player repository, read once on controller connect.
 - **`SettingsStore`** — DataStore keys: `folder_uri`, `battery_opt_asked`, `notif_perm_asked`. Shuffle and repeat are **not** here: they live in `playback_state` and are re-applied on restore (§7.5). A fresh playlist start still forces shuffle OFF and repeat ALL.
@@ -533,8 +543,10 @@ fun durationMs(resolver: ContentResolver, uri: Uri): Long = runCatching {
      else if derived title differs      -> update title + isMissing = false, lastSeenAt = now
                                            (keeps stored titles in step with §4.2 changes)
      else                              -> isMissing = false, lastSeenAt = now
-5. if seen.isEmpty() -> markAllMissing()   else markMissingExcept(seen ids)
-6. emit ScanResult; update lastScanAt
+5. lost = if seen.isEmpty() countAvailable() else countNewlyMissing(seen uris)   (before marking)
+6. if seen.isEmpty() -> markAllMissing()   else markMissingExcept(seen ids)
+7. deleteOrphanedMissing()  // playlist-referenced rows stay as stubs; every other lost row goes
+8. emit ScanResult(missing = lost, total = countAvailable(); update lastScanAt
 ```
 
 Concurrency: a `Mutex` around scanning; launching a second scan (pull-to-refresh during auto-scan) awaits the first. Progress is exposed as `StateFlow<ScanProgress?>` so pull-to-refresh has something to show even with 500 tracks.
@@ -870,7 +882,8 @@ device-only items are 13–18. These must be checked on the Shark 8 by the user,
 5. Playlist loops (repeat-all), repeat-one repeats the same track.
 6. Shuffle keeps the current song and restores order when toggled off.
 7. Drag-and-drop reorder feel and persistence across restart.
-8. "File missing" greyed rows after renaming a file externally, and playback skipping it.
+8. Renaming a file externally: the scan reports `+1 missing` once, the row leaves the library, a
+   playlist keeps a `File missing` stub, and playback skips it.
 9. Revoked folder (delete the folder / clear grant) → banner + Fix flow keeps playlists.
 10. Resume: relaunch shows the saved track paused at 0:00.
 11. Cover picking from the gallery, and covers surviving app restart.
