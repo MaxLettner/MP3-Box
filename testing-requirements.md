@@ -194,6 +194,8 @@ echo "not audio" > "$L/notes.txt"
 
 Optional stress fixture (only for scan timing, not correctness): 500 one-second MP3s named
 `Stress_001.mp3`…`Stress_500.mp3` (`for i in $(seq -w 1 500); do ffmpeg … "$L/Stress_$i.mp3"; done`).
+Under spec §4.2 every one of them is titled `Stress`, since the trailing numbers are ignored; that is
+expected and harmless for a timing fixture.
 Scanning must stay off the main thread and show progress; there is no hard time budget on a Helio G99,
 but a visible UI stall on 500 files is a failure of spec §5.1/§8.3.
 
@@ -263,8 +265,15 @@ Expected values are written out so the tests are not "whatever the code does" te
 | `Café_déjà_vu.mp3` | `Café déjà vu` |
 | `01.mp3` | `01` (no title-casing, no artist split) |
 | `Track.m4a` | `Track` (extension handling is format-agnostic) |
+| `Test.m4a` | `Test` |
+| `Test2.m4a` | `Test` (trailing number dropped) |
+| `Test3Test.m4a` | `Test3Test` (digits are not trailing) |
+| `7_Years.m4a` | `7 Years` (leading number kept) |
+| `7_years2.m4a` | `7 years` |
+| `1234.mp3` | `1234` (all-digit name falls back to the name) |
 
-Also: never `titleCase`, never split `Artist - Title`, never strip leading numbers.
+Also: never `titleCase`, never split `Artist - Title`, never strip leading numbers; only a run of
+digits at the very end of the name is dropped.
 
 ### 6.2 Duration formatting
 
@@ -289,6 +298,7 @@ Also: never `titleCase`, never split `Artist - Title`, never strip leading numbe
 | U-SCAN-5 | Listing becomes empty | all rows `isMissing = true`; **no deletes**; `markAllMissing()` branch (empty `IN ()` guard) |
 | U-SCAN-6 | Size/mtime changed | `durationMs` re-read, `fileName`/`title` updated, `lastSeenAt` bumped |
 | U-SCAN-7 | Size/mtime unchanged and duration already non-zero | duration **not** re-read (assert fake reader call count) |
+| U-SCAN-7b | Size/mtime unchanged but the stored title differs from `titleFromFileName(fileName)` (rule change after an app update) | title rewritten to the derived value, duration **still** not re-read |
 | U-SCAN-8 | Durations unknown (fake returns 0) | rows still inserted, `durationMs = 0`, scan succeeds |
 | U-SCAN-9 | Playlist tables during any scan | item count/positions unchanged |
 | U-SCAN-10 | 500-file listing | completes, no crash, all rows present (timing logged, not asserted) |
