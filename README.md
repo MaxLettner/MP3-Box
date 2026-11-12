@@ -39,7 +39,8 @@ device. The APK is sideloaded; there is no Play Store release.
   backgrounded, headphone unplug handling, Bluetooth and the system media notification/lock screen.
 - Playlist playback loops by default. Repeat cycles **all ↔ one** (no off).
 - Shuffle reorders the live queue without touching the saved playlist order, and turning it off
-  restores that order with the current track still playing.
+  restores that order with the current track still playing. The shuffled order survives an app
+  restart; switching shuffle off and back on deals a fresh order.
 - Mini-player docked above the bottom navigation, expanding into a full Now Playing screen with
   artwork, scrubber and transport controls.
 - Launch restores the last queue at the saved track, paused at 0:00 with shuffle/repeat reapplied.

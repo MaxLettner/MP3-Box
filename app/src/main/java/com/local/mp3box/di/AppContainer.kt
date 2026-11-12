@@ -9,6 +9,7 @@ import com.local.mp3box.data.PlaybackStateRepository
 import com.local.mp3box.data.PlaylistRepository
 import com.local.mp3box.data.SettingsStore
 import com.local.mp3box.data.db.AppDatabase
+import com.local.mp3box.data.db.MIGRATION_1_2
 import com.local.mp3box.data.db.PlaylistDao
 import com.local.mp3box.data.db.TrackDao
 import com.local.mp3box.playback.PlayerRepository
@@ -22,7 +23,7 @@ class AppContainer(context: Context) {
         appContext,
         AppDatabase::class.java,
         "mp3box.db"
-    ).build()
+    ).addMigrations(MIGRATION_1_2).build()
 
     val trackDao: TrackDao get() = database.trackDao()
     val playlistDao: PlaylistDao get() = database.playlistDao()
