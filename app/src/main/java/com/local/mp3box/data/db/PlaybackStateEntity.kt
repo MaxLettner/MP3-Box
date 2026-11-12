@@ -13,6 +13,8 @@ data class PlaybackStateEntity(
     val positionMs: Long,            // written with the snapshot; not restored in v1
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_ALL,
+    /** Track ids in play order, comma-separated; null/blank when shuffle was off. */
+    val shuffleOrder: String? = null,
     val updatedAt: Long
 )
 

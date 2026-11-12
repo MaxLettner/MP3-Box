@@ -385,7 +385,7 @@ without one is not.
 | I-6 | MediaController against `PlaybackService` | controller connects via `SessionToken`, queue size matches available tracks, current `mediaId` = tapped track |
 | I-7 | Shuffle via controller | enabled: current item unchanged, remaining order differs (statistically, with ≥ 5 items); disabled: original order restored, same current item, position continuity within 250 ms |
 | I-8 | Repeat via controller | cycles ALL → ONE → ALL only; `player.repeatMode` matches |
-| I-9 | Resume snapshot | kill service, reconnect controller → queue restored, index of saved track, position 0, `playWhenReady = false`, saved shuffle/repeat re-applied |
+| I-9 | Resume snapshot | kill service, reconnect controller → queue restored, index of saved track, position 0, `playWhenReady = false`, saved shuffle/repeat re-applied, and with shuffle on the saved shuffled order yields the same next-track sequence |
 | I-10 | Playlist delete while playing | playback stops, mini-player state clears, no crash |
 | I-11 | Reorder persists | drag/reorder through repository → relaunch activity → order identical |
 | I-12 | Folder revoked | remove the persisted grant (`adb shell cmd appops`/uninstall-free reset or fake) → banner shown, playlists intact, play shows snackbar |
@@ -463,7 +463,7 @@ Run in this order; each line needs an observable result, not "looks fine". `ADB`
 | D-15 | Battery exemption | prompt appears once; `adb shell dumpsys deviceidle whitelist \| grep mp3box` lists it after "Don't optimise"; denying does not break foreground playback |
 | D-16 | Whitelist card | Library overflow → `Background playback` lists the DokeOS paths verbatim |
 | D-17 | Playlist loop / repeat-one | last track wraps to first; repeat-one restarts the same track; manual next still moves |
-| D-18 | Shuffle restore | toggle on/off mid-track: current song keeps playing and position; playlist saved order unchanged after restart |
+| D-18 | Shuffle restore | toggle on/off mid-track: current song keeps playing and position; playlist saved order unchanged after restart; with shuffle left on, an app restart resumes the identical shuffled order |
 | D-19 | Drag reorder | lift, auto-scroll, drop; order survives restart; blocked while shuffle is on |
 | D-20 | Covers | pick from DokeOS gallery, downscaled, survives restart and a forced stop |
 | D-21 | Missing file | rename via `adb shell mv`; rescan → once `+1 missing`, row gone from Songs, playlist shows `File missing` stub; play skips it with snackbar; removing the stub (or "Remove unavailable tracks") deletes the entry and the row |

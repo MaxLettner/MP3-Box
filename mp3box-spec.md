@@ -151,7 +151,8 @@ Cast, no equalizer, no widgets.
 
 **`PlaybackState`** (single row, fixed `id = 1`, no other rows ever written)
 - `playlistId: Long?`, `trackId: Long?`, `positionMs: Long` (written, not restored in v1 — see 6.6),
-  `shuffleEnabled: Boolean`, `repeatMode: Int` (ALL / ONE), `updatedAt: Long`
+  `shuffleEnabled: Boolean`, `repeatMode: Int` (ALL / ONE), `shuffleOrder: String?` (comma-separated
+  track ids in shuffled play order, see 6.3), `updatedAt: Long`
 
 ### 4.2 Title derivation rules (explicit, testable)
 
@@ -278,6 +279,9 @@ User's choice: **gone from the library, a stub in playlists**.
   the only thing that changes saved order.
 - Shuffle resets (to OFF) when a different playlist is started; the toggle state is written to
   `PlaybackState.shuffleEnabled` and re-applied when the saved queue is restored (6.6).
+- The shuffled play order is saved too (`PlaybackState.shuffleOrder`, track ids), so restarting the
+  app resumes the same order instead of shuffling again. Only a restart replays a saved order:
+  switching shuffle OFF and back ON inside a session deals a **new** order.
 
 ### 6.4 Repeat / loop
 - Two states only, cycled by one button: **`REPEAT_ALL`** (default for every playlist start) and
@@ -316,7 +320,8 @@ User's choice: **gone from the library, a stub in playlists**.
   empty (no crash, no snackbar spam).
 - `positionMs` is stored but **not** restored in v1: resume always starts at 0:00. It is kept for a
   future "resume where you left off" setting.
-- The restored queue keeps its saved order; shuffle and repeat are re-applied from `PlaybackState`.
+- The restored queue keeps its saved order; shuffle and repeat are re-applied from `PlaybackState`,
+  and a shuffled queue is restored in its saved shuffled order rather than being re-randomised.
   A fresh playlist start still resets shuffle OFF and repeat ALL (6.3, 6.4).
 
 ### 6.7 Background survival on DokeOS 4.0

@@ -2,6 +2,7 @@ package com.local.mp3box.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -75,6 +76,12 @@ class PlayerRepository(
     private var currentPlaylistId: Long? = null
     private var restored = false
     private var lastErrorMediaId: String? = null
+
+    /**
+     * Track ids of the queue in shuffled play order as last applied. Kept while shuffle is off so
+     * a fresh toggle can be forced to differ from it; only written to the snapshot when shuffle is on.
+     */
+    private var shuffleOrderIds: List<Long> = emptyList()
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -155,7 +162,7 @@ class PlayerRepository(
             startQueue(player, queue, index)
             if (shuffle) {
                 // Spec §8.5: the Shuffle button turns shuffle on and starts playing.
-                player.shuffleModeEnabled = true
+                enableShuffle(player, index)
                 syncState()
             }
         }
@@ -167,6 +174,7 @@ class PlayerRepository(
         val player = controller ?: return
         player.pause()
         player.clearMediaItems()
+        shuffleOrderIds = emptyList()
         currentPlaylistId = null
         syncState()
     }
@@ -202,7 +210,13 @@ class PlayerRepository(
 
     fun toggleShuffle() {
         val player = controller ?: return
-        player.shuffleModeEnabled = !player.shuffleModeEnabled
+        if (player.shuffleModeEnabled) {
+            player.shuffleModeEnabled = false
+        } else {
+            // A fresh toggle always deals a new order; only a restore replays a saved one.
+            enableShuffle(player, player.currentMediaItemIndex)
+        }
+        syncState()
     }
 
     /** Spec §6.4: only two states, no "off". */
@@ -223,6 +237,7 @@ class PlayerRepository(
 
     private fun startQueue(player: MediaController, queue: List<MediaItem>, index: Int) {
         lastErrorMediaId = null
+        shuffleOrderIds = emptyList()
         player.setMediaItems(queue, index, 0L)
         player.repeatMode = Player.REPEAT_MODE_ALL   // fresh start resets both modes (spec §6.3/§6.4)
         player.shuffleModeEnabled = false
@@ -248,6 +263,16 @@ class PlayerRepository(
         player.repeatMode =
             if (snapshot.repeatMode == Player.REPEAT_MODE_ONE) Player.REPEAT_MODE_ONE
             else Player.REPEAT_MODE_ALL
+        if (snapshot.shuffleEnabled) {
+            // Spec §6.3: resume the exact order from the last session instead of re-shuffling.
+            val queueIds = queue.mapNotNull { it.mediaId.toLongOrNull() }.toSet()
+            val savedOrder = snapshot.shuffleOrder.filter { it in queueIds }.distinct()
+            if (savedOrder.size == queueIds.size) {
+                sendShuffleOrder(player, savedOrder)
+            } else {
+                enableShuffle(player, index)   // playlist changed since the snapshot; shuffle anew
+            }
+        }
         player.shuffleModeEnabled = snapshot.shuffleEnabled
         player.prepare()
         syncState()
@@ -288,9 +313,58 @@ class PlayerRepository(
             positionMs = player.currentPosition.coerceAtLeast(0L),
             shuffleEnabled = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
+            shuffleOrder = if (player.shuffleModeEnabled) shuffleOrderIds.joinToString(",") else null,
             updatedAt = System.currentTimeMillis()
         )
         withContext(Dispatchers.IO) { stateRepository.save(entity) }
+    }
+
+    /**
+     * Spec §6.3: keeps the current item playing, shuffles the rest, and remembers the order.
+     * Turning shuffle on always deals a new order; only [restoreSnapshot] replays a saved one.
+     */
+    private fun enableShuffle(player: MediaController, currentIndex: Int) {
+        val queueIds = player.queueTrackIds()
+        if (queueIds != null && queueIds.isNotEmpty()) {
+            val current = currentIndex.coerceIn(0, queueIds.lastIndex)
+            val rest = queueIds.indices.filter { it != current }.map { queueIds[it] }
+            var order = listOf(queueIds[current]) + rest.shuffled()
+            // A toggle should visibly differ from the order just left; re-draw a few times if not.
+            var attempts = 0
+            while (order == shuffleOrderIds && attempts < 5) {
+                order = listOf(queueIds[current]) + rest.shuffled()
+                attempts++
+            }
+            sendShuffleOrder(player, order)
+        }
+        player.shuffleModeEnabled = true
+    }
+
+    /**
+     * Track ids of the queue the player actually holds, or null if any item is not one of ours.
+     * Read from the controller rather than a remembered copy so a toggle can never be a silent
+     * no-op (e.g. after a restore into an already-playing session).
+     */
+    private fun MediaController.queueTrackIds(): List<Long>? {
+        val ids = (0 until mediaItemCount).map { getMediaItemAt(it).mediaId.toLongOrNull() }
+        return if (ids.any { it == null }) null else ids.filterNotNull()
+    }
+
+    /** Applies [orderIds] to the service's ExoPlayer; the controller cannot do this itself. */
+    private fun sendShuffleOrder(player: MediaController, orderIds: List<Long>) {
+        if (!player.isSessionCommandAvailable(ShuffleOrderCommand.COMMAND)) return
+        val queueIds = player.queueTrackIds() ?: return
+        val indexById = queueIds.mapIndexed { index, id -> id.toString() to index }.toMap()
+        val indices = orderIds.mapNotNull { indexById[it.toString()] }
+        if (indices.size != queueIds.size) return
+        shuffleOrderIds = orderIds
+        player.sendCustomCommand(
+            ShuffleOrderCommand.COMMAND,
+            Bundle().apply {
+                putIntArray(ShuffleOrderCommand.KEY_INDICES, indices.toIntArray())
+                putLong(ShuffleOrderCommand.KEY_SEED, System.nanoTime())
+            }
+        )
     }
 
     private fun syncState() {

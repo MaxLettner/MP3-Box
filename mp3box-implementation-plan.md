@@ -356,6 +356,7 @@ data class PlaybackStateEntity(
     val positionMs: Long,            // written with the snapshot; not restored in v1 (§7.5)
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_ALL,   // androidx.media3.common.Player
+    val shuffleOrder: String? = null,                // track ids, shuffled play order (§7.4)
     val updatedAt: Long
 )
 
@@ -696,7 +697,8 @@ platform MediaCodec on API 31+, so no extra extractor or decoder dependency is n
 
 ### 7.4 Shuffle and repeat
 
-- Shuffle button: `controller.shuffleModeEnabled = !shuffleModeEnabled`. Native ExoPlayer keeps the current item playing and restores original order on toggle-off. **Never** writes to `playlist_items` — the database order is the saved order. There is no `savedQueue` column: the unshuffled queue lives in the player, and across restarts the DB order plus the saved track is enough to rebuild it.
+- Shuffle button: `controller.shuffleModeEnabled = !shuffleModeEnabled`. Native ExoPlayer keeps the current item playing and restores original order on toggle-off. **Never** writes to `playlist_items` — the database order is the saved order. The unshuffled queue is rebuilt from the DB on restart; the shuffled play order is kept separately in `playback_state.shuffleOrder` (track ids) and re-applied through a custom session command, because the `Player` API a controller sees cannot set a shuffle order.
+- Toggling shuffle off and back on inside a session deals a **new** order; only the restore path (§7.5) replays a saved one. The order is computed from the queue the controller actually holds, never from a remembered copy, so the custom command cannot silently no-op.
 - Both toggles are written to `playback_state` with the rest of the snapshot (`shuffleEnabled`, `repeatMode`) and re-applied after restore (§7.5).
 - Repeat button cycles only two states (spec: no "off"):
 
@@ -716,7 +718,7 @@ After the controller connects and the DB is read:
 3. index = position of saved track in that queue; if absent → clear the snapshot.
 4. `setMediaItems(queue, index, 0)` — **do not play** (spec: paused at 0:00); `prepare()` happens in step 6 once the modes are applied.
 5. seek to 0: the stored `positionMs` is written with the snapshot but deliberately **not** restored in v1 (reserved for a future "resume where you left off" setting).
-6. apply the saved modes: `setShuffleModeEnabled(state.shuffleEnabled)`, `setRepeatMode(state.repeatMode)` (defaults shuffle off / `REPEAT_MODE_ALL`), then `prepare()` and stay paused. A fresh playlist start still resets both (§7.4).
+6. apply the saved modes: when shuffle was on, send `state.shuffleOrder` to the service (dropping ids no longer in the queue, and shuffling anew if the queue changed), then `setShuffleModeEnabled(state.shuffleEnabled)`, `setRepeatMode(state.repeatMode)` (defaults shuffle off / `REPEAT_MODE_ALL`), `prepare()` and stay paused. A fresh playlist start still resets both (§7.4).
 
 Snapshot writes happen on `onMediaItemTransition`, on `pause`, and on app background (`onStop`) — debounced 1 s, at most one DB write per second.
 

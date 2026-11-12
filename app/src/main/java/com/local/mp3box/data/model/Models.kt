@@ -107,7 +107,10 @@ fun PlaybackStateEntity.toDomain(): PlaybackSnapshot = PlaybackSnapshot(
     trackId = trackId,
     positionMs = positionMs,
     shuffleEnabled = shuffleEnabled,
-    repeatMode = repeatMode
+    repeatMode = repeatMode,
+    shuffleOrder = shuffleOrder.orEmpty()
+        .split(',')
+        .mapNotNull { it.toLongOrNull() }
 )
 
 data class PlaybackSnapshot(
@@ -115,5 +118,7 @@ data class PlaybackSnapshot(
     val trackId: Long?,
     val positionMs: Long,
     val shuffleEnabled: Boolean,
-    val repeatMode: Int
+    val repeatMode: Int,
+    /** Track ids in the saved shuffled play order; empty when shuffle was off. */
+    val shuffleOrder: List<Long> = emptyList()
 )
