@@ -75,7 +75,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 `ANDROID_HOME` may be replaced by a `local.properties` file containing `sdk.dir=/path/to/android-sdk`
-(git-ignored, not portable).
+(git-ignored, not portable). Likewise, instead of exporting `JAVA_HOME` (needed when the system JDK is
+newer than AGP accepts), put `org.gradle.java.home=/path/to/jdk-21` in your user-level
+`~/.gradle/gradle.properties`; the committed `gradle.properties` stays machine-independent.
 
 The release variant (`./gradlew :app:assembleRelease`) is deliberately signed with the machine's
 debug keystore so debug and release builds update each other on the same device. No keystore is
@@ -120,7 +122,8 @@ app/src/main/java/com/local/mp3box/
 ├── playback/                         PlaybackService, PlayerRepository, QueueFactory
 ├── ui/
 │   ├── library/, playlists/, playlist/, nowplaying/, player/
-│   ├── components/                   TrackRow/Tile, MiniPlayer, PlaylistCard, sheets, banners
+│   ├── components/                   TrackRow/Tile, MiniPlayer, PlaylistCard, sheets, banners,
+│   │                                 dialogs, search field, empty state
 │   ├── navigation/, theme/
 ├── util/                             title derivation, natural sort, duration formatting, artwork
 app/src/main/res/                     strings, theme, launcher icon

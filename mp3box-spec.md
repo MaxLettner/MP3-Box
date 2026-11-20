@@ -581,7 +581,7 @@ Goal: produce an installable **debug APK** in this environment and give the user
 Steps (in order, all local to the project folder / user cache):
 
 1. Install a Gradle-compatible JDK (21 preferred, 17 acceptable) without touching the system JDK;
-   point Gradle at it via `org.gradle.java.home` in `gradle.properties` or `JAVA_HOME` for the
+   point Gradle at it via `org.gradle.java.home` in the user-level `~/.gradle/gradle.properties` or `JAVA_HOME` for the
    build command. Never rely on the container's JDK 27.
 2. Download Android **cmdline-tools**, install `platform-tools`, `platforms;android-37.0`,
    `build-tools;37.0.0`; set `ANDROID_HOME`/`sdk.dir` in `local.properties` (gitignored).

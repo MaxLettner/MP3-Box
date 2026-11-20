@@ -13,13 +13,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -29,17 +25,15 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.local.mp3box.Mp3BoxApp
 import com.local.mp3box.R
 import com.local.mp3box.ui.components.MiniPlayer
 import com.local.mp3box.ui.navigation.Mp3BoxNavHost
 import com.local.mp3box.ui.navigation.Routes
-import kotlinx.coroutines.delay
 
 private data class Tab(
     val route: String,
     val labelRes: Int,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: ImageVector
 )
 
 private val tabs = listOf(
@@ -49,30 +43,15 @@ private val tabs = listOf(
 
 @Composable
 fun AppRoot() {
-    val context = LocalContext.current
-    val player = remember(context) {
-        (context.applicationContext as Mp3BoxApp).container.playerRepository
-    }
+    val player = appContainer().playerRepository
     val playback by player.state.collectAsStateWithLifecycle()
 
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route
-    val showBar = currentDestination?.route in tabs.map { it.route }
+    val showBar = tabs.any { it.route == currentRoute }
     val showMini = playback.currentTrackId != null && currentRoute != Routes.NOW_PLAYING
-
-    var positionMs by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(playback.currentTrackId) {
-        if (playback.currentTrackId == null) {
-            positionMs = 0L
-            return@LaunchedEffect
-        }
-        while (true) {
-            positionMs = player.currentPositionMs
-            delay(500)
-        }
-    }
 
     // Spec §6.6: the snapshot is written when the app leaves the foreground.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -88,9 +67,12 @@ fun AppRoot() {
         bottomBar = {
             Column {
                 if (showMini) {
+                    // Polled only while the bar is on screen and the app is in the foreground.
+                    val positionMs by player.positionMs.collectAsStateWithLifecycle(
+                        initialValue = player.currentPositionMs
+                    )
                     MiniPlayer(
                         title = playback.currentTitle,
-                        seed = playback.currentTrackId?.toString().orEmpty(),
                         isPlaying = playback.isPlaying,
                         progress = if (playback.durationMs > 0) {
                             positionMs.toFloat() / playback.durationMs

@@ -15,9 +15,7 @@ import com.local.mp3box.data.PlaybackStateRepository
 import com.local.mp3box.data.db.PlaylistDao
 import com.local.mp3box.data.db.PlaybackStateEntity
 import com.local.mp3box.data.db.TrackDao
-import com.local.mp3box.data.db.TrackEntity
-import com.local.mp3box.data.model.toDomain
-import com.local.mp3box.util.NaturalOrder
+import com.local.mp3box.data.model.toSortedTracks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +27,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -230,6 +229,14 @@ class PlayerRepository(
     val currentPositionMs: Long
         get() = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
 
+    /** Polled at 2 Hz for as long as it is collected; collect on the main thread (spec §6.1). */
+    val positionMs: Flow<Long> = flow {
+        while (true) {
+            emit(currentPositionMs)
+            delay(500)
+        }
+    }
+
     /** Writes the snapshot immediately; called when the app goes to the background. */
     fun flushSnapshot() {
         scope.launch { writeSnapshot() }
@@ -278,11 +285,8 @@ class PlayerRepository(
         syncState()
     }
 
-    private suspend fun libraryQueue(): List<MediaItem> = QueueFactory.forTracks(
-        trackDao.getTracks()
-            .map(TrackEntity::toDomain)
-            .sortedWith(compareBy(NaturalOrder) { it.title })
-    )
+    private suspend fun libraryQueue(): List<MediaItem> =
+        QueueFactory.forTracks(trackDao.getTracks().toSortedTracks())
 
     private suspend fun queueFor(playlistId: Long?): List<MediaItem> =
         if (playlistId != null) {
@@ -325,16 +329,15 @@ class PlayerRepository(
      */
     private fun enableShuffle(player: MediaController, currentIndex: Int) {
         val queueIds = player.queueTrackIds()
-        if (queueIds != null && queueIds.isNotEmpty()) {
+        if (!queueIds.isNullOrEmpty()) {
             val current = currentIndex.coerceIn(0, queueIds.lastIndex)
-            val rest = queueIds.indices.filter { it != current }.map { queueIds[it] }
-            var order = listOf(queueIds[current]) + rest.shuffled()
+            val rest = queueIds.filterIndexed { index, _ -> index != current }
             // A toggle should visibly differ from the order just left; re-draw a few times if not.
-            var attempts = 0
-            while (order == shuffleOrderIds && attempts < 5) {
+            var order: List<Long>
+            var draws = 0
+            do {
                 order = listOf(queueIds[current]) + rest.shuffled()
-                attempts++
-            }
+            } while (order == shuffleOrderIds && ++draws < 6)
             sendShuffleOrder(player, order)
         }
         player.shuffleModeEnabled = true
@@ -354,8 +357,8 @@ class PlayerRepository(
     private fun sendShuffleOrder(player: MediaController, orderIds: List<Long>) {
         if (!player.isSessionCommandAvailable(ShuffleOrderCommand.COMMAND)) return
         val queueIds = player.queueTrackIds() ?: return
-        val indexById = queueIds.mapIndexed { index, id -> id.toString() to index }.toMap()
-        val indices = orderIds.mapNotNull { indexById[it.toString()] }
+        val indexById = queueIds.withIndex().associate { (index, id) -> id to index }
+        val indices = orderIds.mapNotNull { indexById[it] }
         if (indices.size != queueIds.size) return
         shuffleOrderIds = orderIds
         player.sendCustomCommand(

@@ -6,7 +6,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import com.local.mp3box.data.model.PlaylistEntryRow
 import com.local.mp3box.data.model.Track
-import com.local.mp3box.data.model.toDomain
 import com.local.mp3box.util.tileJpeg
 
 /**
@@ -22,17 +21,16 @@ object QueueFactory {
     private const val ARTWORK_BUDGET_BYTES = 600_000
 
     fun forTracks(tracks: List<Track>): List<MediaItem> {
-        var artworkBytes = 0
+        var budget = ARTWORK_BUDGET_BYTES
         return tracks.filterNot { it.isMissing }.map { track ->
-            val artwork = tileJpeg(track.title)
-            val attach = artworkBytes + artwork.size <= ARTWORK_BUDGET_BYTES
-            if (attach) artworkBytes += artwork.size
-            mediaItem(track, if (attach) artwork else null)
+            val artwork = tileJpeg(track.title).takeIf { it.size <= budget }
+            if (artwork != null) budget -= artwork.size
+            mediaItem(track, artwork)
         }
     }
 
     fun forPlaylist(entries: List<PlaylistEntryRow>): List<MediaItem> =
-        forTracks(entries.map { it.toDomain().track })
+        forTracks(entries.map { it.track })
 
     private fun mediaItem(track: Track, artwork: ByteArray?): MediaItem {
         val metadata = MediaMetadata.Builder()

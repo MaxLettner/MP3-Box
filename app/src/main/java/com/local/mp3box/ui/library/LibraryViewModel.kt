@@ -8,6 +8,7 @@ import com.local.mp3box.data.PlaylistRepository
 import com.local.mp3box.data.ScanResult
 import com.local.mp3box.data.model.PlaylistStatsRow
 import com.local.mp3box.data.model.Track
+import com.local.mp3box.data.model.filterByTitle
 import com.local.mp3box.playback.PlaybackEvent
 import com.local.mp3box.playback.PlayerRepository
 import kotlinx.coroutines.channels.Channel
@@ -47,11 +48,10 @@ class LibraryViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /** Built on [tracks], so the library query and its sort run once per change, not twice. */
     val visibleTracks: StateFlow<List<Track>?> =
-        combine(folderRepository.tracks, _query) { all, query ->
-            val needle = query.trim()
-            if (needle.isEmpty()) all else all.filter { it.title.contains(needle, ignoreCase = true) }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        combine(tracks, _query) { all, query -> all?.filterByTitle(query) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _events = Channel<LibraryEvent>(Channel.BUFFERED)
     val events: Flow<LibraryEvent> = _events.receiveAsFlow()

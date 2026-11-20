@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -37,7 +38,10 @@ class PlaylistDetailViewModel(
     private val orderOverride = MutableStateFlow<List<Long>?>(null)
 
     val entries: StateFlow<List<PlaylistEntryRow>> = combine(
-        repository.observeEntries(playlistId),
+        // Drop the local order as soon as the database holds exactly that order.
+        repository.observeEntries(playlistId).onEach { rows ->
+            if (orderOverride.value == rows.map { it.itemId }) orderOverride.value = null
+        },
         orderOverride
     ) { rows, order ->
         if (order == null) {
@@ -51,16 +55,6 @@ class PlaylistDetailViewModel(
     private val _events = Channel<PlaylistDetailEvent>(Channel.BUFFERED)
     val events: Flow<PlaylistDetailEvent> = _events.receiveAsFlow()
 
-    init {
-        // Drop the local order as soon as the database holds exactly that order.
-        viewModelScope.launch {
-            repository.observeEntries(playlistId).collect { rows ->
-                val order = orderOverride.value ?: return@collect
-                if (rows.map { it.itemId } == order) orderOverride.value = null
-            }
-        }
-    }
-
     fun playFromTop() {
         player.playPlaylist(playlistId)
     }
@@ -71,8 +65,8 @@ class PlaylistDetailViewModel(
     }
 
     fun playTrack(trackId: Long) {
-        val entry = entries.value.firstOrNull { it.id == trackId } ?: return
-        if (entry.isMissing) return
+        val entry = entries.value.firstOrNull { it.track.id == trackId } ?: return
+        if (entry.track.isMissing) return
         player.playPlaylist(playlistId, startTrackId = trackId)
     }
 
@@ -97,11 +91,7 @@ class PlaylistDetailViewModel(
         }
     }
 
-    fun removeTrack(trackId: Long) {
-        viewModelScope.launch { repository.removeTrack(playlistId, trackId) }
-    }
-
-    fun removeTracks(trackIds: Set<Long>) {
+    fun removeTracks(trackIds: Collection<Long>) {
         if (trackIds.isEmpty()) return
         viewModelScope.launch { repository.removeTracks(playlistId, trackIds) }
     }

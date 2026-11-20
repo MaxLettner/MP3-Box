@@ -90,12 +90,14 @@ sdk.dir=/home/<user>/android-sdk
 
 ```properties
 org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
-org.gradle.java.home=/home/<user>/.local/jdk
 org.gradle.parallel=true
 org.gradle.caching=true
 android.useAndroidX=true
 kotlin.code.style=official
 ```
+
+The JDK path is machine-specific, so it goes in the user-level `~/.gradle/gradle.properties`
+(`org.gradle.java.home=/home/<user>/.local/jdk`), never in the committed file.
 
 **Gate 0:** `./gradlew -v` reports Gradle 9.6.0 + JVM 21, and `sdkmanager --list_installed` shows `platforms;android-37.0` and `build-tools;37.0.0`.
 
@@ -264,7 +266,7 @@ android {
 }
 ```
 
-Dependencies: Compose BOM (ui, ui-graphics, ui-tooling-preview, material3, material-icons-extended), activity-compose, navigation-compose, lifecycle-runtime-compose + lifecycle-viewmodel-compose, Room runtime/ktx + `ksp(room-compiler)`, DataStore preferences, Media3 exoplayer + session, Coil 3 compose, coroutines-android. `debugImplementation(ui-tooling)` is optional and adds build time; include it only if previews are wanted later.
+Dependencies: Compose BOM (ui, ui-graphics, material3, material-icons-extended), activity-compose, navigation-compose, lifecycle-runtime-compose + lifecycle-viewmodel-compose, Room runtime/ktx + `ksp(room-compiler)`, DataStore preferences, Media3 exoplayer + session, Coil 3 compose, coroutines-android. `ui-tooling-preview` + `debugImplementation(ui-tooling)` are optional and add build time; include them only if previews are wanted later.
 
 `AndroidManifest.xml`:
 
@@ -537,15 +539,18 @@ fun durationMs(resolver: ContentResolver, uri: Uri): Long = runCatching {
 1. folderUri == null                -> state NoFolder, keep DB untouched
 2. persisted permission missing     -> state Revoked, keep DB untouched (playback disabled)
 3. list top-level .mp3/.m4a files  -> seen: List<FoundFile>
-4. for each file (sequential, IO dispatcher):
-     row = trackDao.findByUri(uri)
+4. known = every row keyed by uri (one query); for each file (sequential, IO dispatcher):
+     row = known[uri]
      if row == null                    -> insert new (duration, title, size, lastModified, lastSeenAt = now)
-     else if size/lastModified changed  -> update duration/title + isMissing = false, lastSeenAt = now
-     else if derived title differs      -> update title + isMissing = false, lastSeenAt = now
-                                           (keeps stored titles in step with §4.2 changes)
-     else                              -> isMissing = false, lastSeenAt = now
-5. lost = if seen.isEmpty() countAvailable() else countNewlyMissing(seen uris)   (before marking)
-6. if seen.isEmpty() -> markAllMissing()   else markMissingExcept(seen ids)
+     else if size/lastModified/fileName changed or the derived title differs
+                                       -> rewrite the row (duration re-read), isMissing = false, lastSeenAt = now
+                                          (the title check keeps stored titles in step with §4.2 changes)
+     else                              -> remember row.id as unchanged
+   New and changed files are written as they are found, so a first scan fills the list progressively.
+5-7 run in one transaction (TrackDao.finishScan), so observers see one change per rescan:
+5. unchanged ids -> isMissing = false, lastSeenAt = now
+6. lost = if seen.isEmpty() countAvailable() else countNewlyMissing(seen uris)   (before marking)
+   if seen.isEmpty() -> markAllMissing()   else markMissingExcept(seen uris)
 7. deleteOrphanedMissing()  // playlist-referenced rows stay as stubs; every other lost row goes
 8. emit ScanResult(missing = lost, total = countAvailable(); update lastScanAt
 ```
@@ -632,7 +637,7 @@ DokeOS's SystemUI renders the media card from `MediaMetadata`, so every `MediaIt
 `setArtworkData(tileJpeg(seed = title), MediaMetadata.PICTURE_TYPE_FRONT_COVER)`. `tileJpeg()` lives
 in `util/TileArtwork.kt`: the same deterministic hue pair as the Compose `TrackTile`, drawn into a
 512 × 512 `Bitmap` with `LinearGradient` (HSV → `Color.HSVToColor`) and JPEG-encoded at q85. Encode
-once per title and cache the bytes in a small LRU; `artworkData` crosses a binder, so keep it under
+once per hue (the seed maps to one of 256) and cache the bytes; `artworkData` crosses a binder, so keep it under
 ~100 KB per item.
 
 ### 7.2 Controller plumbing (`PlayerRepository`)
@@ -909,7 +914,7 @@ device-only items are 13–18. These must be checked on a DokeOS device by the u
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| System JDK 27 picked up by Gradle, AGP rejects it | High if unmanaged | `org.gradle.java.home` in `gradle.properties`; `JAVA_HOME` exported in every build command |
+| System JDK 27 picked up by Gradle, AGP rejects it | High if unmanaged | `org.gradle.java.home` in the user-level `~/.gradle/gradle.properties`; `JAVA_HOME` exported in every build command |
 | KSP 2.3.13 incompatible with Kotlin 2.4.10 | Low–medium | KSP is decoupled now; if it fails, fall back to the KSP release built for Kotlin 2.4.10 (`2.4.10-x`), or last resort Kotlin 2.4.20 |
 | Compose BOM APIs drifted (PullToRefresh, Slider, SearchBar) | Medium | Compile early in phase 1; adjust to current signatures rather than pinning older BOM |
 | Room + KSP annotation errors block phase 2 | Low | Keep schema minimal; `exportSchema = false`; verify DAO SQL by compiling after each DAO |

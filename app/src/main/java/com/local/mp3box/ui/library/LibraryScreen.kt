@@ -9,27 +9,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -40,7 +31,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -52,29 +42,38 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.core.content.ContextCompat
-import com.local.mp3box.Mp3BoxApp
 import com.local.mp3box.R
 import com.local.mp3box.data.FolderState
 import com.local.mp3box.data.model.Track
 import com.local.mp3box.playback.PlaybackEvent
+import com.local.mp3box.ui.appContainer
 import com.local.mp3box.ui.components.AddToPlaylistSheet
+import com.local.mp3box.ui.components.EmptyState
 import com.local.mp3box.ui.components.FolderLostBanner
+import com.local.mp3box.ui.components.NameDialog
+import com.local.mp3box.ui.components.SearchField
 import com.local.mp3box.ui.components.TrackContextSheet
 import com.local.mp3box.ui.components.TrackRow
 import com.local.mp3box.util.Duration
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val factory = remember(context) { libraryViewModelFactory(context) }
-    val viewModel: LibraryViewModel = viewModel(factory = factory)
+    val container = appContainer()
+    val viewModel = viewModel {
+        LibraryViewModel(
+            container.musicFolderRepository,
+            container.playerRepository,
+            container.playlistRepository
+        )
+    }
 
     val folderState by viewModel.folderState.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
@@ -87,7 +86,6 @@ fun LibraryScreen(modifier: Modifier = Modifier) {
     var sheetTrack by remember { mutableStateOf<Track?>(null) }
     var addToTrack by remember { mutableStateOf<Track?>(null) }
     var newPlaylistTrack by remember { mutableStateOf<Track?>(null) }
-    var newPlaylistName by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val folderPicker = rememberLauncherForActivityResult(
@@ -114,56 +112,14 @@ fun LibraryScreen(modifier: Modifier = Modifier) {
         viewModel.play(track.id)
     }
 
-    // Events are kept in state and turned into text during composition. Reading strings from
-    // LocalContext inside the collector would freeze the text at the configuration that was
-    // current when it ran; stringResource re-reads it on a locale or size change.
-    var libraryEvent by remember { mutableStateOf<LibraryEvent?>(null) }
-    var libraryEventSeq by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
-        viewModel.events.collect { event ->
-            libraryEvent = event
-            libraryEventSeq++
-        }
-    }
-    val libraryMessage = libraryEvent?.let { event ->
-        when (event) {
-            is LibraryEvent.SongsFound -> pluralStringResource(
-                R.plurals.songs_found, event.count, event.count
-            )
-            is LibraryEvent.ScanFinished -> if (event.added > 0 || event.missing > 0) {
-                stringResource(R.string.library_updated_counts, event.added, event.missing)
-            } else {
-                stringResource(R.string.library_updated)
-            }
-            LibraryEvent.FolderUnusable -> stringResource(R.string.folder_unusable)
-            is LibraryEvent.AddedToPlaylist ->
-                stringResource(R.string.added_to_playlist, event.name)
-            LibraryEvent.AlreadyInPlaylist -> stringResource(R.string.already_in_playlist)
-            is LibraryEvent.CreatedPlaylist ->
-                stringResource(R.string.created_playlist, event.name)
-        }
-    }
-    LaunchedEffect(libraryEventSeq) {
-        libraryMessage?.let { snackbarHostState.showSnackbar(it) }
-    }
-
-    var playbackEvent by remember { mutableStateOf<PlaybackEvent?>(null) }
-    var playbackEventSeq by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
-        viewModel.playbackEvents.collect { event ->
-            playbackEvent = event
-            playbackEventSeq++
-        }
-    }
-    val playbackMessage = playbackEvent?.let { event ->
-        when (event) {
-            PlaybackEvent.NothingPlayable -> stringResource(R.string.nothing_playable)
-            PlaybackEvent.SongUnavailable -> stringResource(R.string.song_unavailable)
-            PlaybackEvent.PlaybackFailed -> stringResource(R.string.playback_failed)
-        }
-    }
-    LaunchedEffect(playbackEventSeq) {
-        playbackMessage?.let { snackbarHostState.showSnackbar(it) }
+    // A configuration change recreates the activity and this effect with it, so the strings
+    // resolved here always match the current configuration. The newest message replaces the
+    // one on screen rather than queueing behind it.
+    LaunchedEffect(viewModel) {
+        merge(
+            viewModel.events.map { context.messageFor(it) },
+            viewModel.playbackEvents.map { context.messageFor(it) }
+        ).collectLatest { snackbarHostState.showSnackbar(it) }
     }
 
     Scaffold(
@@ -200,14 +156,24 @@ fun LibraryScreen(modifier: Modifier = Modifier) {
             when {
                 folderState is FolderState.Loading || loadedTracks == null || loadedVisible == null -> Unit
 
-                folderState is FolderState.NoFolder -> Onboarding(
-                    onChooseFolder = { folderPicker.launch(null) }
-                )
+                folderState is FolderState.NoFolder -> EmptyState(
+                    title = stringResource(R.string.choose_folder_title),
+                    body = stringResource(R.string.choose_folder_body),
+                    icon = Icons.Filled.LibraryMusic
+                ) {
+                    Button(onClick = { folderPicker.launch(null) }) {
+                        Text(stringResource(R.string.choose_folder))
+                    }
+                }
 
-                loadedTracks.isEmpty() -> EmptyFolder(
-                    onRescan = viewModel::rescan,
-                    canRescan = folderState is FolderState.Ok
-                )
+                loadedTracks.isEmpty() -> EmptyState(
+                    title = stringResource(R.string.empty_library),
+                    body = stringResource(R.string.empty_library_body)
+                ) {
+                    Button(onClick = viewModel::rescan, enabled = folderState is FolderState.Ok) {
+                        Text(stringResource(R.string.rescan))
+                    }
+                }
 
                 else -> {
                     SearchField(query = query, onQueryChange = viewModel::onQueryChange)
@@ -257,37 +223,19 @@ fun LibraryScreen(modifier: Modifier = Modifier) {
             },
             onNewPlaylist = {
                 addToTrack = null
-                newPlaylistName = ""
                 newPlaylistTrack = track
             }
         )
     }
 
     newPlaylistTrack?.let { track ->
-        AlertDialog(
-            onDismissRequest = { newPlaylistTrack = null },
-            title = { Text(stringResource(R.string.new_playlist)) },
-            text = {
-                OutlinedTextField(
-                    value = newPlaylistName,
-                    onValueChange = { newPlaylistName = it },
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.playlist_name)) }
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.createPlaylistWithTrack(newPlaylistName, track.id)
-                        newPlaylistTrack = null
-                    },
-                    enabled = newPlaylistName.isNotBlank()
-                ) { Text(stringResource(R.string.create)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { newPlaylistTrack = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+        NameDialog(
+            title = stringResource(R.string.new_playlist),
+            confirmLabel = stringResource(R.string.create),
+            onDismiss = { newPlaylistTrack = null },
+            onConfirm = { name ->
+                viewModel.createPlaylistWithTrack(name, track.id)
+                newPlaylistTrack = null
             }
         )
     }
@@ -304,7 +252,6 @@ private fun TrackList(
     onPlay: (Track) -> Unit,
     onLongPress: (Track) -> Unit
 ) {
-    val available = allTracks.filterNot { it.isMissing }
     PullToRefreshBox(
         isRefreshing = isScanning,
         onRefresh = onRefresh,
@@ -315,12 +262,13 @@ private fun TrackList(
             contentPadding = PaddingValues(bottom = 8.dp)
         ) {
             item(key = "header") {
+                // The library only lists playable files, so every track counts here.
                 Text(
                     text = pluralStringResource(
                         R.plurals.library_header,
-                        available.size,
-                        available.size,
-                        Duration.formatPlaylistLength(available.sumOf { it.durationMs })
+                        allTracks.size,
+                        allTracks.size,
+                        Duration.formatPlaylistLength(allTracks.sumOf { it.durationMs })
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -335,103 +283,6 @@ private fun TrackList(
                     onLongClick = { onLongPress(track) }
                 )
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SearchField(
-    query: String,
-    onQueryChange: (String) -> Unit
-) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        placeholder = { Text(stringResource(R.string.search_songs)) },
-        leadingIcon = {
-            Icon(imageVector = Icons.Filled.Search, contentDescription = null)
-        },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(
-                        imageVector = Icons.Filled.Clear,
-                        contentDescription = stringResource(R.string.clear_search)
-                    )
-                }
-            }
-        },
-        singleLine = true,
-        shape = MaterialTheme.shapes.large,
-        colors = OutlinedTextFieldDefaults.colors(
-            unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    )
-}
-
-@Composable
-private fun Onboarding(onChooseFolder: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = Icons.Filled.LibraryMusic,
-            contentDescription = null,
-            modifier = Modifier.size(56.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.choose_folder_title),
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.choose_folder_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onChooseFolder) {
-            Text(stringResource(R.string.choose_folder))
-        }
-    }
-}
-
-@Composable
-private fun EmptyFolder(onRescan: () -> Unit, canRescan: Boolean) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = stringResource(R.string.empty_library),
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.empty_library_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onRescan, enabled = canRescan) {
-            Text(stringResource(R.string.rescan))
         }
     }
 }
@@ -457,15 +308,24 @@ private fun NoResults(query: String, onClearSearch: () -> Unit) {
     }
 }
 
-private fun libraryViewModelFactory(context: Context): ViewModelProvider.Factory {
-    val container = (context.applicationContext as Mp3BoxApp).container
-    return viewModelFactory {
-        initializer {
-            LibraryViewModel(
-                container.musicFolderRepository,
-                container.playerRepository,
-                container.playlistRepository
-            )
-        }
+private fun Context.messageFor(event: LibraryEvent): String = when (event) {
+    is LibraryEvent.SongsFound ->
+        resources.getQuantityString(R.plurals.songs_found, event.count, event.count)
+    is LibraryEvent.ScanFinished -> if (event.added > 0 || event.missing > 0) {
+        getString(R.string.library_updated_counts, event.added, event.missing)
+    } else {
+        getString(R.string.library_updated)
     }
+    LibraryEvent.FolderUnusable -> getString(R.string.folder_unusable)
+    is LibraryEvent.AddedToPlaylist -> getString(R.string.added_to_playlist, event.name)
+    LibraryEvent.AlreadyInPlaylist -> getString(R.string.already_in_playlist)
+    is LibraryEvent.CreatedPlaylist -> getString(R.string.created_playlist, event.name)
 }
+
+private fun Context.messageFor(event: PlaybackEvent): String = getString(
+    when (event) {
+        PlaybackEvent.NothingPlayable -> R.string.nothing_playable
+        PlaybackEvent.SongUnavailable -> R.string.song_unavailable
+        PlaybackEvent.PlaybackFailed -> R.string.playback_failed
+    }
+)

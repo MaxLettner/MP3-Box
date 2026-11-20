@@ -8,8 +8,7 @@ import androidx.core.net.toUri
 import com.local.mp3box.data.db.TrackDao
 import com.local.mp3box.data.db.TrackEntity
 import com.local.mp3box.data.model.Track
-import com.local.mp3box.data.model.toDomain
-import com.local.mp3box.util.NaturalOrder
+import com.local.mp3box.data.model.toSortedTracks
 import com.local.mp3box.util.titleFromFileName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +17,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -71,10 +69,7 @@ class MusicFolderRepository(
     private val _lastResult = MutableStateFlow<ScanResult?>(null)
     val lastResult: StateFlow<ScanResult?> = _lastResult.asStateFlow()
 
-    /** Natural A–Z by title (spec §8.3); SQLite cannot order digit runs numerically. */
-    val tracks: Flow<List<Track>> = trackDao.observeTracks().map { rows ->
-        rows.map(TrackEntity::toDomain).sortedWith(compareBy(NaturalOrder) { it.title })
-    }
+    val tracks: Flow<List<Track>> = trackDao.observeTracks().map { it.toSortedTracks() }
 
     init {
         scope.launch {
@@ -120,77 +115,56 @@ class MusicFolderRepository(
                     return@withLock null
                 }
                 val now = System.currentTimeMillis()
+                val known = trackDao.getAll().associateBy { it.uri }
                 val seen = ArrayList<String>(files.size)
+                val unchanged = ArrayList<Long>()
                 var added = 0
                 var updated = 0
                 var failures = 0
 
                 files.forEach { file ->
                     runCatching {
-                        val uriString = file.uri.toString()
-                        val existing = trackDao.findByUri(uriString)
+                        val uri = file.uri.toString()
                         val title = titleFromFileName(file.fileName)
-                        when {
-                            existing == null -> {
-                                val duration = scanner.durationMs(file.uri)
-                                val id = trackDao.insert(
-                                    TrackEntity(
-                                        uri = uriString,
-                                        fileName = file.fileName,
-                                        title = title,
-                                        durationMs = duration,
-                                        sizeBytes = file.sizeBytes,
-                                        lastModified = file.lastModified,
-                                        lastSeenAt = now
-                                    )
-                                )
-                                if (id == -1L) {
-                                    // Lost an insert race: fall back to updating the winner.
-                                    trackDao.findByUri(uriString)?.let { row ->
-                                        trackDao.updateFromScan(
-                                            row.id, title, duration,
-                                            file.sizeBytes, file.lastModified, now
-                                        )
-                                    }
+                        val existing = known[uri]
+                        // The title comparison keeps an unchanged file's stored title in sync
+                        // with current derivation rules (spec §4.2) after an app update.
+                        if (existing != null &&
+                            existing.title == title &&
+                            existing.fileName == file.fileName &&
+                            existing.sizeBytes == file.sizeBytes &&
+                            existing.lastModified == file.lastModified
+                        ) {
+                            unchanged += existing.id   // confirmed in bulk by finishScan
+                        } else {
+                            val row = TrackEntity(
+                                id = existing?.id ?: 0L,
+                                uri = uri,
+                                fileName = file.fileName,
+                                title = title,
+                                durationMs = scanner.durationMs(file.uri),
+                                sizeBytes = file.sizeBytes,
+                                lastModified = file.lastModified,
+                                lastSeenAt = now
+                            )
+                            when {
+                                existing != null -> {
+                                    trackDao.update(row)
                                     updated++
-                                } else {
-                                    added++
+                                }
+                                trackDao.insert(row) != -1L -> added++
+                                else -> {
+                                    // Listed twice: the first listing inserted it; update that row.
+                                    trackDao.findByUri(uri)?.let { trackDao.update(row.copy(id = it.id)) }
+                                    updated++
                                 }
                             }
-                            // The title comparison keeps an unchanged file's stored title in sync
-                            // with current derivation rules (spec §4.2) after an app update.
-                            existing.title != title ||
-                                existing.fileName != file.fileName ||
-                                existing.sizeBytes != file.sizeBytes ||
-                                existing.lastModified != file.lastModified -> {
-                                trackDao.updateFromScan(
-                                    existing.id,
-                                    title,
-                                    scanner.durationMs(file.uri),
-                                    file.sizeBytes,
-                                    file.lastModified,
-                                    now
-                                )
-                                updated++
-                            }
-                            else -> trackDao.markSeen(existing.id, now)
                         }
-                        seen += uriString
+                        seen += uri
                     }.onFailure { failures++ }
                 }
 
-                // Count the loss before marking: an already-missing file is not lost twice, so
-                // its snackbar line appears on the scan that finds it gone and never again.
-                val lost = if (seen.isEmpty()) {
-                    trackDao.countAvailable()
-                } else {
-                    trackDao.countNewlyMissing(seen)
-                }
-                // Room rejects an empty IN (), so the no-files case needs its own statement.
-                if (seen.isEmpty()) trackDao.markAllMissing() else trackDao.markMissingExcept(seen)
-                // Spec §5.5: only rows a playlist still references survive as stubs; the rest of
-                // the library loses them for good here, so songs never show unavailable files.
-                trackDao.deleteOrphanedMissing()
+                val lost = trackDao.finishScan(unchanged, seen, now)
                 ScanResult(
                     added = added,
                     updated = updated,

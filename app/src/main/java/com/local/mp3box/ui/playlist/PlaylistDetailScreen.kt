@@ -1,15 +1,11 @@
 package com.local.mp3box.ui.playlist
 
-import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,7 +30,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -44,7 +39,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -74,16 +68,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.local.mp3box.Mp3BoxApp
 import com.local.mp3box.R
 import com.local.mp3box.data.model.PlaylistEntryRow
+import com.local.mp3box.ui.appContainer
+import com.local.mp3box.ui.components.ConfirmDialog
+import com.local.mp3box.ui.components.NameDialog
 import com.local.mp3box.ui.components.PlaylistCover
 import com.local.mp3box.ui.components.TrackTile
+import com.local.mp3box.ui.components.trackDurationText
 import com.local.mp3box.util.Duration
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -99,10 +93,10 @@ fun PlaylistDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val factory = remember(context, playlistId) {
-        playlistDetailViewModelFactory(context, playlistId)
+    val container = appContainer()
+    val viewModel = viewModel {
+        PlaylistDetailViewModel(playlistId, container.playlistRepository, container.playerRepository)
     }
-    val viewModel: PlaylistDetailViewModel = viewModel(factory = factory)
 
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val entries by viewModel.entries.collectAsStateWithLifecycle()
@@ -116,7 +110,6 @@ fun PlaylistDetailScreen(
     var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var menuOpen by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
-    var renameText by remember { mutableStateOf("") }
     var confirmingDelete by remember { mutableStateOf(false) }
     var confirmingRemoveUnavailable by remember { mutableStateOf(false) }
 
@@ -131,24 +124,20 @@ fun PlaylistDetailScreen(
         )
     }
 
-    val coverFailedMessage = stringResource(R.string.cover_failed)
-    val duplicatedMessage = stringResource(R.string.playlist_duplicated)
-    val duplicateFailedMessage = stringResource(R.string.playlist_duplicate_failed)
-    val shuffleMessage = stringResource(R.string.turn_off_shuffle_to_reorder)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             val message = when (event) {
-                PlaylistDetailEvent.CoverFailed -> coverFailedMessage
-                PlaylistDetailEvent.Duplicated -> duplicatedMessage
-                PlaylistDetailEvent.DuplicateFailed -> duplicateFailedMessage
+                PlaylistDetailEvent.CoverFailed -> R.string.cover_failed
+                PlaylistDetailEvent.Duplicated -> R.string.playlist_duplicated
+                PlaylistDetailEvent.DuplicateFailed -> R.string.playlist_duplicate_failed
             }
-            snackbarHostState.showSnackbar(message)
+            snackbarHostState.showSnackbar(context.getString(message))
         }
     }
 
-    val available = entries.filterNot { it.isMissing }
+    val available = entries.filterNot { it.track.isMissing }
     val missingCount = entries.size - available.size
-    val durationMs = available.sumOf { it.durationMs }
+    val durationMs = available.sumOf { it.track.durationMs }
     val currentTrackId = playerState.currentTrackId
     val shuffleOn = playerState.shuffle
 
@@ -179,7 +168,11 @@ fun PlaylistDetailScreen(
                     IconButton(
                         onClick = {
                             if (!editMode && shuffleOn) {
-                                scope.launch { snackbarHostState.showSnackbar(shuffleMessage) }
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        context.getString(R.string.turn_off_shuffle_to_reorder)
+                                    )
+                                }
                             } else {
                                 editMode = !editMode
                                 selected = emptySet()
@@ -206,7 +199,6 @@ fun PlaylistDetailScreen(
                                 text = { Text(stringResource(R.string.rename)) },
                                 onClick = {
                                     menuOpen = false
-                                    renameText = playlist?.name.orEmpty()
                                     renaming = true
                                 }
                             )
@@ -443,22 +435,23 @@ fun PlaylistDetailScreen(
                         )
                     }
                 }
+                val trackId = entry.track.id
                 PlaylistRow(
                     entry = entry,
                     index = index,
-                    isCurrent = entry.id == currentTrackId,
+                    isCurrent = trackId == currentTrackId,
                     editing = editMode,
-                    selected = entry.id in selected,
+                    selected = trackId in selected,
                     shuffleOn = shuffleOn,
                     onClick = {
                         if (editMode) {
-                            selected = selected.toggle(entry.id)
+                            selected = selected.toggle(trackId)
                         } else {
-                            viewModel.playTrack(entry.id)
+                            viewModel.playTrack(trackId)
                         }
                     },
-                    onToggleSelected = { selected = selected.toggle(entry.id) },
-                    onRemove = { viewModel.removeTrack(entry.id) },
+                    onToggleSelected = { selected = selected.toggle(trackId) },
+                    onRemove = { viewModel.removeTracks(setOf(trackId)) },
                     dragHandle = dragHandle,
                     modifier = Modifier
                         .zIndex(if (reorder.isDragging(entry.itemId)) 1f else 0f)
@@ -469,89 +462,49 @@ fun PlaylistDetailScreen(
     }
 
     if (renaming) {
-        AlertDialog(
-            onDismissRequest = { renaming = false },
-            title = { Text(stringResource(R.string.rename_playlist)) },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.playlist_name)) }
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.rename(renameText)
-                        renaming = false
-                    },
-                    enabled = renameText.isNotBlank()
-                ) { Text(stringResource(R.string.rename)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { renaming = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
+        NameDialog(
+            title = stringResource(R.string.rename_playlist),
+            confirmLabel = stringResource(R.string.rename),
+            initial = playlist?.name.orEmpty(),
+            onDismiss = { renaming = false },
+            onConfirm = { name ->
+                viewModel.rename(name)
+                renaming = false
             }
         )
     }
 
     if (confirmingDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmingDelete = false },
-            title = { Text(stringResource(R.string.delete_playlist_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.delete_playlist_body,
-                        playlist?.name.orEmpty()
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmingDelete = false
-                    viewModel.delete(onBack)
-                }) { Text(stringResource(R.string.delete)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmingDelete = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
+        ConfirmDialog(
+            title = stringResource(R.string.delete_playlist_title),
+            text = stringResource(R.string.delete_playlist_body, playlist?.name.orEmpty()),
+            confirmLabel = stringResource(R.string.delete),
+            onDismiss = { confirmingDelete = false },
+            onConfirm = {
+                confirmingDelete = false
+                viewModel.delete(onBack)
             }
         )
     }
 
     if (confirmingRemoveUnavailable) {
-        AlertDialog(
-            onDismissRequest = { confirmingRemoveUnavailable = false },
-            title = {
-                Text(
-                    pluralStringResource(
-                        R.plurals.remove_unavailable_question,
-                        missingCount,
-                        missingCount
-                    )
-                )
-            },
-            text = { Text(stringResource(R.string.remove_unavailable_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmingRemoveUnavailable = false
-                    viewModel.removeUnavailable()
-                }) { Text(stringResource(R.string.remove_unavailable)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmingRemoveUnavailable = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
+        ConfirmDialog(
+            title = pluralStringResource(
+                R.plurals.remove_unavailable_question,
+                missingCount,
+                missingCount
+            ),
+            text = stringResource(R.string.remove_unavailable_body),
+            confirmLabel = stringResource(R.string.remove_unavailable),
+            onDismiss = { confirmingRemoveUnavailable = false },
+            onConfirm = {
+                confirmingRemoveUnavailable = false
+                viewModel.removeUnavailable()
             }
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlaylistRow(
     entry: PlaylistEntryRow,
@@ -574,8 +527,8 @@ private fun PlaylistRow(
             .background(
                 if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent
             )
-            .alpha(if (entry.isMissing) 0.38f else 1f)
-            .combinedClickable(onClick = onClick)
+            .alpha(if (entry.track.isMissing) 0.38f else 1f)
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -601,11 +554,11 @@ private fun PlaylistRow(
             }
             Spacer(Modifier.width(8.dp))
         }
-        TrackTile(seed = entry.uri, size = 36.dp)
+        TrackTile(seed = entry.track.title, size = 36.dp)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = entry.title,
+                text = entry.track.title,
                 style = MaterialTheme.typography.titleSmall,
                 color = if (isCurrent) {
                     MaterialTheme.colorScheme.primary
@@ -615,7 +568,7 @@ private fun PlaylistRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (entry.isMissing) {
+            if (entry.track.isMissing) {
                 Text(
                     text = stringResource(R.string.file_missing),
                     style = MaterialTheme.typography.labelSmall,
@@ -627,11 +580,7 @@ private fun PlaylistRow(
             dragHandle()
         } else {
             Text(
-                text = if (entry.durationMs > 0) {
-                    Duration.formatTrack(entry.durationMs)
-                } else {
-                    stringResource(R.string.unknown_duration)
-                },
+                text = trackDurationText(entry.track.durationMs),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -648,7 +597,7 @@ private fun PlaylistRow(
                 ) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.play)) },
-                        enabled = !entry.isMissing,
+                        enabled = !entry.track.isMissing,
                         onClick = {
                             rowMenuOpen = false
                             onClick()
@@ -679,55 +628,36 @@ private fun Set<Long>.toggle(id: Long): Set<Long> =
 /** Fixed-height rows make index math trivial; no lazy-layout offset lookups needed. */
 private class ReorderState {
     var entries: List<PlaylistEntryRow> = emptyList()
-    var draggingId by mutableStateOf<Long?>(null)
-    var offset by mutableFloatStateOf(0f)
+    private var draggingId by mutableStateOf<Long?>(null)
+
+    /** Finger offset from the dragged row's current slot; drawn as its translation. */
+    private var offset by mutableFloatStateOf(0f)
     private var baseIndex = 0
-    private var total = 0f
 
     fun start(itemId: Long) {
         draggingId = itemId
         baseIndex = entries.indexOfFirst { it.itemId == itemId }
-        total = 0f
         offset = 0f
     }
 
     fun drag(dy: Float, rowHeight: Float, move: (Int, Int) -> Unit) {
         if (draggingId == null || rowHeight <= 0f) return
-        total += dy
-        offset = total
-        val target = (baseIndex + (total / rowHeight).roundToInt())
+        offset += dy
+        val target = (baseIndex + (offset / rowHeight).roundToInt())
             .coerceIn(0, entries.lastIndex.coerceAtLeast(0))
         if (target != baseIndex) {
             move(baseIndex, target)
-            total -= (target - baseIndex) * rowHeight
+            offset -= (target - baseIndex) * rowHeight
             baseIndex = target
-            offset = total
         }
     }
 
     fun end() {
         draggingId = null
-        total = 0f
         offset = 0f
     }
 
     fun isDragging(itemId: Long): Boolean = draggingId == itemId
 
     fun translationFor(itemId: Long): Float = if (draggingId == itemId) offset else 0f
-}
-
-private fun playlistDetailViewModelFactory(
-    context: Context,
-    playlistId: Long
-): ViewModelProvider.Factory {
-    val container = (context.applicationContext as Mp3BoxApp).container
-    return viewModelFactory {
-        initializer {
-            PlaylistDetailViewModel(
-                playlistId,
-                container.playlistRepository,
-                container.playerRepository
-            )
-        }
-    }
 }

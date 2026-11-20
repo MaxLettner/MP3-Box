@@ -13,7 +13,4 @@ interface PlaybackStateDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(state: PlaybackStateEntity)
-
-    @Query("DELETE FROM playback_state")
-    suspend fun clear()
 }

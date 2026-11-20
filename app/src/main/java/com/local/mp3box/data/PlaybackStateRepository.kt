@@ -15,6 +15,4 @@ class PlaybackStateRepository(private val dao: PlaybackStateDao) {
     suspend fun load(): PlaybackSnapshot? = dao.get(PLAYBACK_STATE_ID)?.toDomain()
 
     suspend fun save(state: PlaybackStateEntity) = dao.put(state)
-
-    suspend fun clear() = dao.clear()
 }

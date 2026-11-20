@@ -5,76 +5,51 @@ import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
-import android.util.LruCache
-import androidx.core.graphics.createBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import android.graphics.Color as AndroidColor
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.createBitmap
 import java.io.ByteArrayOutputStream
-import kotlin.math.abs
-import kotlin.math.roundToInt
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Plan §8.2: a stable per-seed gradient so tiles never flicker or reshuffle between
- * recompositions. Same seed always yields the same pair of hues.
+ * recompositions. The seed (a track title or playlist name, spec §7.4) picks one of 256 hues,
+ * so the same seed always yields the same pair of colours, on screen and in the media card.
  */
-fun tileBrush(seed: String): Brush {
-    val hue = hueOf(seed)
-    return Brush.linearGradient(
-        listOf(
-            Color.hsl(hue, 0.30f, 0.22f),
-            Color.hsl((hue + 28f) % 360f, 0.36f, 0.38f)
-        )
-    )
+private fun hueIndex(seed: String): Int = (seed.hashCode() ushr 8) and 0xFF
+
+private fun tileColors(hueIndex: Int): Pair<Color, Color> {
+    val hue = hueIndex / 255f * 360f
+    return Color.hsl(hue, 0.30f, 0.22f) to Color.hsl((hue + 28f) % 360f, 0.36f, 0.38f)
 }
+
+fun tileBrush(seed: String): Brush = Brush.linearGradient(tileColors(hueIndex(seed)).toList())
+
+/** One JPEG per hue: at ~5 KB each the whole set stays near 1 MB, whatever the library size. */
+private val artworkCache = ConcurrentHashMap<Int, ByteArray>()
 
 /**
  * The same gradient as JPEG bytes for `MediaMetadata.artworkData`, so DokeOS's media card
- * and lock screen show artwork instead of an empty square (plan §7.1). Gradients encode very
- * small — 512 px at quality 85 is ~5 KB — and encoded bytes are cached per seed.
+ * and lock screen show artwork instead of an empty square (plan §7.1).
  */
-private val artworkCache = object : LruCache<String, ByteArray>(64) {}
+fun tileJpeg(seed: String): ByteArray {
+    val hueIndex = hueIndex(seed)
+    return artworkCache.getOrPut(hueIndex) { encodeTile(hueIndex) }
+}
 
-fun tileJpeg(seed: String, sizePx: Int = 512): ByteArray {
-    artworkCache.get(seed)?.let { return it }
-    val hue = hueOf(seed)
-    val bitmap = createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+private fun encodeTile(hueIndex: Int): ByteArray {
+    val (start, end) = tileColors(hueIndex)
+    val size = ARTWORK_PX.toFloat()
+    val bitmap = createBitmap(ARTWORK_PX, ARTWORK_PX, Bitmap.Config.ARGB_8888)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader = LinearGradient(
-            0f, 0f, sizePx.toFloat(), sizePx.toFloat(),
-            intArrayOf(
-                hslToArgb(hue, 0.30f, 0.22f),
-                hslToArgb((hue + 28f) % 360f, 0.36f, 0.38f)
-            ),
-            null,
-            Shader.TileMode.CLAMP
-        )
+        shader = LinearGradient(0f, 0f, size, size, start.toArgb(), end.toArgb(), Shader.TileMode.CLAMP)
     }
-    Canvas(bitmap).drawRect(0f, 0f, sizePx.toFloat(), sizePx.toFloat(), paint)
+    Canvas(bitmap).drawRect(0f, 0f, size, size, paint)
     val out = ByteArrayOutputStream()
     bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
     bitmap.recycle()
-    return out.toByteArray().also { artworkCache.put(seed, it) }
+    return out.toByteArray()
 }
 
-private fun hueOf(seed: String): Float = ((seed.hashCode() ushr 8) and 0xFF) / 255f * 360f
-
-private fun hslToArgb(hue: Float, saturation: Float, lightness: Float): Int {
-    val chroma = (1f - abs(2f * lightness - 1f)) * saturation
-    val h = hue / 60f
-    val x = chroma * (1f - abs(h % 2f - 1f))
-    val (r, g, b) = when {
-        h < 1f -> Triple(chroma, x, 0f)
-        h < 2f -> Triple(x, chroma, 0f)
-        h < 3f -> Triple(0f, chroma, x)
-        h < 4f -> Triple(0f, x, chroma)
-        h < 5f -> Triple(x, 0f, chroma)
-        else -> Triple(chroma, 0f, x)
-    }
-    val m = lightness - chroma / 2f
-    return AndroidColor.rgb(
-        ((r + m) * 255f).roundToInt().coerceIn(0, 255),
-        ((g + m) * 255f).roundToInt().coerceIn(0, 255),
-        ((b + m) * 255f).roundToInt().coerceIn(0, 255)
-    )
-}
+private const val ARTWORK_PX = 512

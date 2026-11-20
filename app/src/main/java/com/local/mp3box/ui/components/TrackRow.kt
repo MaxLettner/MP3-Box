@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -48,12 +49,12 @@ fun TrackRow(
             .combinedClickable(
                 enabled = !track.isMissing && (onClick != null || onLongClick != null),
                 onClick = { onClick?.invoke() },
-                onLongClick = { onLongClick?.invoke() }
+                onLongClick = onLongClick
             )
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TrackTile(seed = track.uri)
+        TrackTile(seed = track.title)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -97,13 +98,15 @@ fun TrackRow(
             Spacer(Modifier.width(8.dp))
         }
         Text(
-            text = if (track.durationMs > 0) {
-                Duration.formatTrack(track.durationMs)
-            } else {
-                stringResource(R.string.unknown_duration)
-            },
+            text = trackDurationText(track.durationMs),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
+
+/** `3:07`, or `--:--` when the file header gave no duration. */
+@Composable
+@ReadOnlyComposable
+fun trackDurationText(durationMs: Long): String =
+    if (durationMs > 0) Duration.formatTrack(durationMs) else stringResource(R.string.unknown_duration)

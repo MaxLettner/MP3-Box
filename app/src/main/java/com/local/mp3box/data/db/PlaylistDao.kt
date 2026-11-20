@@ -9,6 +9,13 @@ import com.local.mp3box.data.model.PlaylistEntryRow
 import com.local.mp3box.data.model.PlaylistStatsRow
 import kotlinx.coroutines.flow.Flow
 
+private const val PLAYLIST_ENTRIES = """
+    SELECT t.*, pi.position AS position, pi.id AS itemId
+    FROM playlist_items pi JOIN tracks t ON t.id = pi.trackId
+    WHERE pi.playlistId = :playlistId
+    ORDER BY pi.position ASC, pi.id ASC
+"""
+
 @Dao
 abstract class PlaylistDao {
 
@@ -32,32 +39,15 @@ abstract class PlaylistDao {
     @Query("SELECT * FROM playlists WHERE id = :id")
     abstract suspend fun findPlaylist(id: Long): PlaylistEntity?
 
-    @Query(
-        """
-        SELECT t.*, pi.position AS position, pi.id AS itemId
-        FROM playlist_items pi JOIN tracks t ON t.id = pi.trackId
-        WHERE pi.playlistId = :playlistId
-        ORDER BY pi.position ASC, pi.id ASC
-        """
-    )
+    @Query(PLAYLIST_ENTRIES)
     abstract fun observePlaylistEntries(playlistId: Long): Flow<List<PlaylistEntryRow>>
 
     /** One-shot read used to build a playback queue (no Flow collection needed). */
-    @Query(
-        """
-        SELECT t.*, pi.position AS position, pi.id AS itemId
-        FROM playlist_items pi JOIN tracks t ON t.id = pi.trackId
-        WHERE pi.playlistId = :playlistId
-        ORDER BY pi.position ASC, pi.id ASC
-        """
-    )
+    @Query(PLAYLIST_ENTRIES)
     abstract suspend fun getPlaylistEntries(playlistId: Long): List<PlaylistEntryRow>
 
     @Query("SELECT name FROM playlists WHERE id = :playlistId")
     abstract suspend fun playlistName(playlistId: Long): String?
-
-    @Query("SELECT trackId FROM playlist_items WHERE playlistId = :playlistId")
-    abstract suspend fun trackIdsIn(playlistId: Long): List<Long>
 
     @Insert
     abstract suspend fun insertPlaylist(playlist: PlaylistEntity): Long
@@ -81,9 +71,6 @@ abstract class PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertItems(items: List<PlaylistItemEntity>): List<Long>   // -1 = duplicate
 
-    @Query("DELETE FROM playlist_items WHERE playlistId = :playlistId AND trackId = :trackId")
-    abstract suspend fun removeTrack(playlistId: Long, trackId: Long)
-
     @Query("UPDATE playlist_items SET position = :position WHERE id = :itemId")
     abstract suspend fun updatePosition(itemId: Long, position: Int)
 
@@ -100,7 +87,7 @@ abstract class PlaylistDao {
     }
 
     /** Spec §5.5: once the last playlist entry is gone, a missing track's row goes with it. */
-    @Query("DELETE FROM tracks WHERE isMissing = 1 AND id NOT IN (SELECT trackId FROM playlist_items)")
+    @Query(DELETE_ORPHANED_MISSING_TRACKS)
     abstract suspend fun deleteOrphanedMissing()
 
     @Transaction
@@ -165,7 +152,7 @@ abstract class PlaylistDao {
         if (entries.isNotEmpty()) {
             insertItems(
                 entries.mapIndexed { index, entry ->
-                    PlaylistItemEntity(playlistId = newId, trackId = entry.id, position = index)
+                    PlaylistItemEntity(playlistId = newId, trackId = entry.track.id, position = index)
                 }
             )
         }

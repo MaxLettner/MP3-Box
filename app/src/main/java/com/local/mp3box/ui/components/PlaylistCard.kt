@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -24,7 +23,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import coil3.compose.AsyncImage
@@ -76,8 +74,7 @@ fun PlaylistCard(
 fun PlaylistCover(
     coverPath: String?,
     seed: String,
-    modifier: Modifier = Modifier,
-    iconSize: Dp? = null
+    modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
@@ -97,11 +94,7 @@ fun PlaylistCover(
                 imageVector = Icons.Filled.MusicNote,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.72f),
-                modifier = if (iconSize != null) {
-                    Modifier.size(iconSize)
-                } else {
-                    Modifier.fillMaxSize(0.3f)
-                }
+                modifier = Modifier.fillMaxSize(0.3f)
             )
         }
     }

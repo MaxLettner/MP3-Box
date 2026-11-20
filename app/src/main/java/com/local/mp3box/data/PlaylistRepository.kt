@@ -25,7 +25,7 @@ class PlaylistRepository(
     fun observeEntries(id: Long): Flow<List<PlaylistEntryRow>> = dao.observePlaylistEntries(id)
 
     fun observeTrackIds(id: Long): Flow<Set<Long>> =
-        dao.observePlaylistEntries(id).map { rows -> rows.mapTo(HashSet()) { it.id } }
+        dao.observePlaylistEntries(id).map { rows -> rows.mapTo(HashSet()) { it.track.id } }
 
     /** Null when the name is blank. */
     suspend fun create(name: String, trackIds: List<Long> = emptyList()): Long? {
@@ -59,10 +59,7 @@ class PlaylistRepository(
 
     /** Returns the number of rows added; duplicates and already-present songs are skipped. */
     suspend fun addTracks(id: Long, trackIds: List<Long>): Int =
-        if (trackIds.isEmpty()) 0 else dao.addTracks(id, trackIds.distinct(), now())
-
-    suspend fun removeTrack(playlistId: Long, trackId: Long) =
-        dao.removeTracksAndTouch(playlistId, listOf(trackId), now())
+        dao.addTracks(id, trackIds.distinct(), now())
 
     suspend fun removeTracks(playlistId: Long, trackIds: Collection<Long>) =
         dao.removeTracksAndTouch(playlistId, trackIds.toList(), now())
@@ -84,8 +81,6 @@ class PlaylistRepository(
         dao.setCover(id, null, now())
         coverArtStore.delete(current.coverPath)
     }
-
-    suspend fun entries(id: Long): List<PlaylistEntryRow> = dao.getPlaylistEntries(id)
 
     suspend fun name(id: Long): String? = dao.playlistName(id)
 

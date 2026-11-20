@@ -1,8 +1,9 @@
 package com.local.mp3box.data.model
 
+import androidx.room.Embedded
 import com.local.mp3box.data.db.PlaybackStateEntity
-import com.local.mp3box.data.db.PlaylistEntity
 import com.local.mp3box.data.db.TrackEntity
+import com.local.mp3box.util.NaturalOrder
 
 /** Domain model used by the UI; entity columns stay out of composables. */
 data class Track(
@@ -17,14 +18,6 @@ data class Track(
     val lastSeenAt: Long
 )
 
-data class Playlist(
-    val id: Long,
-    val name: String,
-    val coverPath: String?,
-    val createdAt: Long,
-    val updatedAt: Long
-)
-
 /** Grid row: playlist plus the three stats the card shows. */
 data class PlaylistStatsRow(
     val id: Long,
@@ -37,25 +30,11 @@ data class PlaylistStatsRow(
     val missingCount: Int
 )
 
-/** Playlist-detail row: track columns joined with its position in the list. */
+/** Playlist-detail row: the track's columns plus its place in the list. */
 data class PlaylistEntryRow(
-    val id: Long,
-    val uri: String,
-    val fileName: String,
-    val title: String,
-    val durationMs: Long,
-    val sizeBytes: Long,
-    val lastModified: Long,
-    val isMissing: Boolean,
-    val lastSeenAt: Long,
+    @Embedded val track: Track,
     val position: Int,
     val itemId: Long
-)
-
-data class PlaylistEntry(
-    val itemId: Long,
-    val position: Int,
-    val track: Track
 )
 
 fun TrackEntity.toDomain(): Track = Track(
@@ -70,37 +49,15 @@ fun TrackEntity.toDomain(): Track = Track(
     lastSeenAt = lastSeenAt
 )
 
-fun PlaylistEntity.toDomain(): Playlist = Playlist(
-    id = id,
-    name = name,
-    coverPath = coverPath,
-    createdAt = createdAt,
-    updatedAt = updatedAt
-)
+/** Natural A–Z by title (spec §8.3); SQLite cannot order digit runs numerically. */
+fun List<TrackEntity>.toSortedTracks(): List<Track> =
+    map(TrackEntity::toDomain).sortedWith(compareBy(NaturalOrder) { it.title })
 
-fun PlaylistStatsRow.toDomain(): Playlist = Playlist(
-    id = id,
-    name = name,
-    coverPath = coverPath,
-    createdAt = createdAt,
-    updatedAt = updatedAt
-)
-
-fun PlaylistEntryRow.toDomain(): PlaylistEntry = PlaylistEntry(
-    itemId = itemId,
-    position = position,
-    track = Track(
-        id = id,
-        uri = uri,
-        fileName = fileName,
-        title = title,
-        durationMs = durationMs,
-        sizeBytes = sizeBytes,
-        lastModified = lastModified,
-        isMissing = isMissing,
-        lastSeenAt = lastSeenAt
-    )
-)
+/** Library search: case-insensitive title match; a blank query keeps every track. */
+fun List<Track>.filterByTitle(query: String): List<Track> {
+    val needle = query.trim()
+    return if (needle.isEmpty()) this else filter { it.title.contains(needle, ignoreCase = true) }
+}
 
 fun PlaybackStateEntity.toDomain(): PlaybackSnapshot = PlaybackSnapshot(
     playlistId = playlistId,

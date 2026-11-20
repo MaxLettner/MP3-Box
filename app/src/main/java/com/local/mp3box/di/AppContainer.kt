@@ -14,31 +14,31 @@ import com.local.mp3box.data.db.PlaylistDao
 import com.local.mp3box.data.db.TrackDao
 import com.local.mp3box.playback.PlayerRepository
 
-/** Manual dependency container owned by the Application. */
+/** Manual dependency container owned by the Application; screens only see the repositories. */
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
 
-    val database: AppDatabase = Room.databaseBuilder(
+    private val database: AppDatabase = Room.databaseBuilder(
         appContext,
         AppDatabase::class.java,
         "mp3box.db"
     ).addMigrations(MIGRATION_1_2).build()
 
-    val trackDao: TrackDao get() = database.trackDao()
-    val playlistDao: PlaylistDao get() = database.playlistDao()
+    private val trackDao: TrackDao get() = database.trackDao()
+    private val playlistDao: PlaylistDao get() = database.playlistDao()
 
-    val settings: SettingsStore = SettingsStore(appContext)
+    private val settings: SettingsStore = SettingsStore(appContext)
 
-    val mediaScanner: MediaScanner = MediaScanner(appContext)
+    private val mediaScanner: MediaScanner = MediaScanner(appContext)
 
     val musicFolderRepository: MusicFolderRepository =
         MusicFolderRepository(appContext, settings, trackDao, mediaScanner)
 
-    val playbackStateRepository: PlaybackStateRepository =
+    private val playbackStateRepository: PlaybackStateRepository =
         PlaybackStateRepository(database.playbackStateDao())
 
-    val coverArtStore: CoverArtStore = CoverArtStore(appContext)
+    private val coverArtStore: CoverArtStore = CoverArtStore(appContext)
 
     val playlistRepository: PlaylistRepository = PlaylistRepository(playlistDao, coverArtStore)
 

@@ -31,7 +31,6 @@ import com.local.mp3box.R
 @Composable
 fun MiniPlayer(
     title: String?,
-    seed: String,
     isPlaying: Boolean,
     progress: Float,
     onOpen: () -> Unit,
@@ -58,7 +57,7 @@ fun MiniPlayer(
                     .padding(start = 12.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TrackTile(seed = seed, size = 40.dp)
+                TrackTile(seed = title.orEmpty(), size = 40.dp)
                 Spacer(Modifier.width(12.dp))
                 Text(
                     text = title.orEmpty(),

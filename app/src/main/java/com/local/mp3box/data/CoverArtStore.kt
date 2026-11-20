@@ -24,8 +24,7 @@ class CoverArtStore(context: Context) {
         withContext(Dispatchers.IO) {
             val bitmap = decode(source) ?: return@withContext null
             try {
-                if (!dir.exists()) dir.mkdirs()
-                val file = File(dir, "$playlistId-${System.currentTimeMillis()}.jpg")
+                val file = newCoverFile(playlistId)
                 file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
                 if (oldPath != null && oldPath != file.absolutePath) File(oldPath).delete()
                 file.absolutePath
@@ -41,8 +40,7 @@ class CoverArtStore(context: Context) {
         withContext(Dispatchers.IO) {
             val source = existingPath?.let(::File)?.takeIf { it.exists() } ?: return@withContext null
             runCatching {
-                if (!dir.exists()) dir.mkdirs()
-                val file = File(dir, "$playlistId-${System.currentTimeMillis()}.jpg")
+                val file = newCoverFile(playlistId)
                 source.copyTo(file, overwrite = true)
                 file.absolutePath
             }.getOrNull()
@@ -50,6 +48,11 @@ class CoverArtStore(context: Context) {
 
     suspend fun delete(path: String?) = withContext(Dispatchers.IO) {
         if (!path.isNullOrBlank()) File(path).delete()
+    }
+
+    private fun newCoverFile(playlistId: Long): File {
+        dir.mkdirs()
+        return File(dir, "$playlistId-${System.currentTimeMillis()}.jpg")
     }
 
     private fun decode(uri: Uri): Bitmap? = runCatching {
